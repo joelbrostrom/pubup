@@ -1,0 +1,19 @@
+# Dart tool cache
+.dart_tool/
+
+# pubspec.lock should not be committed for packages (only for apps)
+pubspec.lock
+
+# Build outputs
+build/
+
+# macOS metadata
+.DS_Store
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+
+# Coverage
+coverage/

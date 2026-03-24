@@ -1,0 +1,27 @@
+name: pubup
+description: >-
+  Automatically update pubspec.yaml dependency constraints to the latest
+  resolvable versions across Dart and Flutter workspace packages.
+version: 0.1.0
+homepage: https://github.com/joelbrostrom/pubup
+repository: https://github.com/joelbrostrom/pubup
+issue_tracker: https://github.com/joelbrostrom/pubup/issues
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+platforms:
+  windows:
+  linux:
+  macos:
+
+executables:
+  pubup:
+
+dependencies:
+  args: ^2.7.0
+  yaml: ^3.1.3
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.31.0
