@@ -66,6 +66,20 @@ void main() {
     test('returns false when neither CI nor disable env is set', () {
       expect(isUpdateCheckDisabled({}), isFalse);
     });
+
+    test('returns true when isInteractive is false', () {
+      expect(
+        isUpdateCheckDisabled({}, isInteractive: false),
+        isTrue,
+      );
+    });
+
+    test('returns false when isInteractive is true and env is empty', () {
+      expect(
+        isUpdateCheckDisabled({}, isInteractive: true),
+        isFalse,
+      );
+    });
   });
 
   group('resolveUpdateCacheDir', () {
@@ -88,6 +102,7 @@ void main() {
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
         environment: {'CI': 'true'},
+        isInteractive: true,
       );
 
       verifyNever(() => pubUpdater.getLatestVersion(any()));
@@ -101,6 +116,21 @@ void main() {
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
         environment: {disableUpdateCheckEnv: '1'},
+        isInteractive: true,
+      );
+
+      verifyNever(() => pubUpdater.getLatestVersion(any()));
+      expect(errorOutput.toString(), isEmpty);
+    });
+
+    test('skips when isInteractive is false (no TTY)', () async {
+      await checkForUpdate(
+        currentVersion: '0.2.0',
+        errorOutput: errorOutput,
+        pubUpdater: pubUpdater,
+        cacheDir: cacheDir,
+        environment: {},
+        isInteractive: false,
       );
 
       verifyNever(() => pubUpdater.getLatestVersion(any()));
@@ -118,6 +148,7 @@ void main() {
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
         environment: {},
+        isInteractive: true,
         cacheDuration: const Duration(hours: 24),
       );
 
@@ -135,6 +166,7 @@ void main() {
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
         environment: {},
+        isInteractive: true,
       );
 
       verify(() => pubUpdater.getLatestVersion(pubupPackageName)).called(1);
@@ -159,6 +191,7 @@ void main() {
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
         environment: {},
+        isInteractive: true,
         cacheDuration: const Duration(hours: 24),
       );
 
@@ -176,6 +209,7 @@ void main() {
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
         environment: {},
+        isInteractive: true,
       );
 
       expect(
@@ -195,6 +229,7 @@ void main() {
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
         environment: {},
+        isInteractive: true,
       );
 
       expect(errorOutput.toString(), isEmpty);
@@ -210,6 +245,7 @@ void main() {
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
         environment: {},
+        isInteractive: true,
       );
 
       expect(errorOutput.toString(), isEmpty);
@@ -225,6 +261,7 @@ void main() {
         errorOutput: errorOutput,
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
+        isInteractive: true,
       );
 
       verify(() => pubUpdater.getLatestVersion(pubupPackageName)).called(1);
@@ -242,6 +279,7 @@ void main() {
         errorOutput: errorOutput,
         pubUpdater: pubUpdater,
         environment: {'HOME': homeDir.path},
+        isInteractive: true,
       );
 
       expect(
@@ -264,6 +302,7 @@ void main() {
         pubUpdater: pubUpdater,
         cacheDir: cacheDir,
         environment: {},
+        isInteractive: true,
         timeout: const Duration(milliseconds: 50),
       );
 

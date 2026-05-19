@@ -1,3 +1,12 @@
+## 0.2.1
+
+- The once-per-day update notice is now also suppressed automatically when
+  stderr is not attached to a TTY (e.g. when pubup is invoked by a coding
+  agent, captured by a script, or piped). `CI=true` and
+  `PUBUP_DISABLE_UPDATE_CHECK` continue to work as before.
+- Added `AGENTS.md` with guidance for coding agents on when and how to invoke
+  pubup.
+
 ## 0.2.0
 
 - Added `--version` / `-V` flag.

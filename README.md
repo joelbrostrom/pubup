@@ -27,9 +27,19 @@ pubup update
 ```
 
 pubup checks pub.dev for new releases at most once per day and prints a
-notice on stderr when a newer version is available. To disable this check,
-set `PUBUP_DISABLE_UPDATE_CHECK=1` (also skipped automatically when
-`CI=true`).
+notice on stderr when a newer version is available. The check is skipped
+automatically when:
+
+- `CI=true`
+- `PUBUP_DISABLE_UPDATE_CHECK=1`
+- stderr is not a TTY (e.g. invoked by a coding agent, captured by a script,
+  or piped)
+
+## For coding agents
+
+If you're an LLM-driven coding agent (or you ship one), see
+[AGENTS.md](AGENTS.md) for the recommended workflow, when to prefer `pubup`
+over `dart pub upgrade`, and how to interpret exit codes.
 
 ## Usage
 

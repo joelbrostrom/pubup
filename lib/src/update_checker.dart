@@ -13,7 +13,16 @@ const disableUpdateCheckEnv = 'PUBUP_DISABLE_UPDATE_CHECK';
 const _cacheFileName = 'last_update_check';
 
 /// Returns whether the update check should be skipped for [environment].
-bool isUpdateCheckDisabled(Map<String, String> environment) {
+///
+/// When [isInteractive] is `false` (e.g. stderr is not attached to a TTY),
+/// the check is skipped automatically. This keeps automation contexts like
+/// coding agents, CI runners, and shell pipelines quiet without requiring
+/// callers to set [disableUpdateCheckEnv] explicitly.
+bool isUpdateCheckDisabled(
+  Map<String, String> environment, {
+  bool isInteractive = true,
+}) {
+  if (!isInteractive) return true;
   if (environment['CI'] == 'true') return true;
 
   final disableValue = environment[disableUpdateCheckEnv];
@@ -36,7 +45,10 @@ Directory resolveUpdateCacheDir(Map<String, String> environment) {
 /// [errorOutput] when [currentVersion] is behind.
 ///
 /// The check runs at most once per [cacheDuration] (default 24 hours). Skipped
-/// when [environment] has `CI=true` or [disableUpdateCheckEnv] is set.
+/// when [environment] has `CI=true`, [disableUpdateCheckEnv] is set, or
+/// [isInteractive] is `false` (defaults to `stderr.hasTerminal`, so the notice
+/// is automatically suppressed when stderr is piped or being captured by an
+/// agent / automation).
 ///
 /// Network errors and timeouts are swallowed so offline users are not blocked.
 Future<void> checkForUpdate({
@@ -45,11 +57,13 @@ Future<void> checkForUpdate({
   required PubUpdater pubUpdater,
   Directory? cacheDir,
   Map<String, String>? environment,
+  bool? isInteractive,
   Duration cacheDuration = const Duration(hours: 24),
   Duration timeout = const Duration(seconds: 2),
 }) async {
   final env = environment ?? Platform.environment;
-  if (isUpdateCheckDisabled(env)) return;
+  final interactive = isInteractive ?? stderr.hasTerminal;
+  if (isUpdateCheckDisabled(env, isInteractive: interactive)) return;
 
   final dir = cacheDir ?? resolveUpdateCacheDir(env);
   final cacheFile = File('${dir.path}/$_cacheFileName');

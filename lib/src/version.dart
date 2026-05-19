@@ -1,2 +1,2 @@
 /// The current version of the pubup package.
-const packageVersion = '0.2.0';
+const packageVersion = '0.2.1';
