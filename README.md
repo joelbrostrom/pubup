@@ -91,7 +91,7 @@ Totals: attempted=3, changed=3, failed=0
 ## Contributing
 
 Contributions are welcome! Please file issues and pull requests on
-[GitHub](https://github.com/<your-handle>/pubup).
+[GitHub](https://github.com/joelbrostrom/pubup).
 
 ## License
 
