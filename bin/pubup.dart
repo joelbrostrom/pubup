@@ -1,9 +1,13 @@
 import 'dart:io';
 
 import 'package:args/args.dart';
+import 'package:pub_updater/pub_updater.dart';
+import 'package:pubup/src/commands/self_update.dart';
 import 'package:pubup/src/pubspec_parser.dart';
 import 'package:pubup/src/reporter.dart';
+import 'package:pubup/src/update_checker.dart';
 import 'package:pubup/src/updater.dart';
+import 'package:pubup/src/version.dart';
 import 'package:pubup/src/workspace_discovery.dart';
 
 Future<void> main(List<String> arguments) async {
@@ -29,11 +33,19 @@ Future<void> main(List<String> arguments) async {
       defaultsTo: '.',
     )
     ..addFlag(
+      'version',
+      abbr: 'V',
+      help: 'Print the current version.',
+      negatable: false,
+    )
+    ..addFlag(
       'help',
       abbr: 'h',
       help: 'Show this help message.',
       negatable: false,
-    );
+    )
+    ..addCommand(
+        'update', ArgParser()..addFlag('help', abbr: 'h', negatable: false));
 
   final ArgResults results;
   try {
@@ -42,18 +54,38 @@ Future<void> main(List<String> arguments) async {
     stderr.writeln('Error: ${e.message}');
     stderr.writeln();
     stderr.writeln('Usage: pubup [options]');
+    stderr.writeln('       pubup update');
+    stderr.writeln();
     stderr.writeln(parser.usage);
     exit(64);
   }
 
   if (results.flag('help')) {
-    stdout.writeln('Update pubspec.yaml dependency constraints to the latest '
-        'resolvable versions.');
-    stdout.writeln();
-    stdout.writeln('Usage: pubup [options]');
-    stdout.writeln();
-    stdout.writeln(parser.usage);
+    _printHelp(parser);
     exit(0);
+  }
+
+  if (results.flag('version')) {
+    stdout.writeln('pubup $packageVersion');
+    exit(0);
+  }
+
+  final updateResults = results.command;
+  if (updateResults?.name == 'update') {
+    if (updateResults!.flag('help')) {
+      stdout.writeln('Reinstall pubup from pub.dev.');
+      stdout.writeln();
+      stdout.writeln('Usage: pubup update');
+      exit(0);
+    }
+
+    final exitCode = await runSelfUpdate(
+      currentVersion: packageVersion,
+      output: stdout,
+      errorOutput: stderr,
+      pubUpdater: PubUpdater(),
+    );
+    exit(exitCode);
   }
 
   final dryRun = results.flag('dry-run');
@@ -61,54 +93,78 @@ Future<void> main(List<String> arguments) async {
   final packageFilters = results.multiOption('package');
   final repoRoot = Directory(results.option('root')!).absolute;
 
-  List<Directory> targets;
+  var exitCode = 0;
+
   try {
-    targets = discoverWorkspaceDirs(repoRoot);
-  } on FileSystemException catch (e) {
-    stderr.writeln('Error: ${e.message} (${e.path})');
-    exit(1);
-  }
-
-  targets = filterTargets(targets, packageFilters, repoRoot);
-
-  if (targets.isEmpty) {
-    stderr.writeln('No matching workspace packages found for --package '
-        'filters.');
-    exit(1);
-  }
-
-  final reports = <PackageReport>[];
-
-  for (final target in targets) {
-    final pubspec = File('${target.path}/pubspec.yaml');
-    final command = isFlutterPackage(pubspec) ? 'flutter' : 'dart';
-    final isRoot = target.path == repoRoot.path;
-    final rel = isRoot ? '.' : target.path.substring(repoRoot.path.length + 1);
-
-    stdout.writeln();
-    stdout.writeln('Package: $rel ($command pub)');
-
+    List<Directory> targets;
     try {
-      final report = await runUpdatesForPackage(
-        packageDir: target,
-        command: command,
-        includeDev: includeDev,
-        dryRun: dryRun,
-        output: stdout,
-        errorOutput: stderr,
-      );
-      reports.add(report);
-    } on Exception catch (e) {
-      final failedReport = PackageReport(
-        packageDir: target.path,
-        command: command,
-      )..failed = 1;
-      failedReport.failures.add(e.toString());
-      reports.add(failedReport);
-      stderr.writeln('  ! Failed package scan: $e');
+      targets = discoverWorkspaceDirs(repoRoot);
+    } on FileSystemException catch (e) {
+      stderr.writeln('Error: ${e.message} (${e.path})');
+      exitCode = 1;
+      return;
     }
+
+    targets = filterTargets(targets, packageFilters, repoRoot);
+
+    if (targets.isEmpty) {
+      stderr.writeln('No matching workspace packages found for --package '
+          'filters.');
+      exitCode = 1;
+      return;
+    }
+
+    final reports = <PackageReport>[];
+
+    for (final target in targets) {
+      final pubspec = File('${target.path}/pubspec.yaml');
+      final command = isFlutterPackage(pubspec) ? 'flutter' : 'dart';
+      final isRoot = target.path == repoRoot.path;
+      final rel =
+          isRoot ? '.' : target.path.substring(repoRoot.path.length + 1);
+
+      stdout.writeln();
+      stdout.writeln('Package: $rel ($command pub)');
+
+      try {
+        final report = await runUpdatesForPackage(
+          packageDir: target,
+          command: command,
+          includeDev: includeDev,
+          dryRun: dryRun,
+          output: stdout,
+          errorOutput: stderr,
+        );
+        reports.add(report);
+      } on Exception catch (e) {
+        final failedReport = PackageReport(
+          packageDir: target.path,
+          command: command,
+        )..failed = 1;
+        failedReport.failures.add(e.toString());
+        reports.add(failedReport);
+        stderr.writeln('  ! Failed package scan: $e');
+      }
+    }
+
+    exitCode = printReport(reports, dryRun: dryRun, output: stdout);
+  } finally {
+    await checkForUpdate(
+      currentVersion: packageVersion,
+      errorOutput: stderr,
+      pubUpdater: PubUpdater(),
+    );
   }
 
-  final exitCode = printReport(reports, dryRun: dryRun, output: stdout);
   exit(exitCode);
+}
+
+void _printHelp(ArgParser parser) {
+  stdout.writeln('Update pubspec.yaml dependency constraints to the latest '
+      'resolvable versions.');
+  stdout.writeln();
+  stdout.writeln('Usage: pubup [options]');
+  stdout.writeln('       pubup update');
+  stdout.writeln();
+  stdout.writeln(parser.usage);
 }

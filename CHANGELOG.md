@@ -1,3 +1,11 @@
+## 0.2.0
+
+- Added `--version` / `-V` flag.
+- Added `pubup update` subcommand that reinstalls pubup from pub.dev.
+- pubup now checks pub.dev once per day and prints a notice on stderr
+  when a newer version is available. Set `PUBUP_DISABLE_UPDATE_CHECK=1`
+  or run in CI (`CI=true`) to skip the check.
+
 ## 0.1.1
 
 - Tolerate non-JSON content in `flutter pub outdated --json` output.

@@ -16,6 +16,21 @@ dart pub global activate pubup
 
 Make sure `~/.pub-cache/bin` is on your `PATH`.
 
+## Updating
+
+```bash
+# Manual upgrade
+dart pub global activate pubup
+
+# Or use the built-in command
+pubup update
+```
+
+pubup checks pub.dev for new releases at most once per day and prints a
+notice on stderr when a newer version is available. To disable this check,
+set `PUBUP_DISABLE_UPDATE_CHECK=1` (also skipped automatically when
+`CI=true`).
+
 ## Usage
 
 Run from the root of any Dart or Flutter project:
@@ -65,6 +80,13 @@ The tool intentionally skips dependencies that:
 | `--[no-]dev` | Include `dev_dependencies` | `true` |
 | `--package <name>` | Filter to specific workspace package(s); repeatable | all |
 | `--root <path>` | Project root directory | `.` |
+| `--version`, `-V` | Print the current version | — |
+
+### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `update` | Reinstall pubup from pub.dev (`dart pub global activate pubup`) |
 
 ## Exit codes
 
