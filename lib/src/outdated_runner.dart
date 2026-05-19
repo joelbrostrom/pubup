@@ -78,7 +78,31 @@ Future<List<OutdatedPackage>> getOutdatedPackages(
     );
   }
 
-  final json = jsonDecode(result.stdout as String) as Map<String, dynamic>;
+  return parseOutdatedJson(result.stdout as String);
+}
+
+/// Parses the stdout of `pub outdated --json --show-all` into a list of
+/// [OutdatedPackage]s.
+///
+/// `flutter pub` may print extra content alongside the JSON — most commonly
+/// the "A new version of Flutter is available" banner that wraps text in a
+/// box drawn with `┌─┐│└─┘`. This function tolerates such noise by extracting
+/// the JSON object between the first `{` and the matching last `}` in
+/// [stdout].
+///
+/// Throws a [FormatException] if no JSON object is found.
+List<OutdatedPackage> parseOutdatedJson(String stdout) {
+  final start = stdout.indexOf('{');
+  final end = stdout.lastIndexOf('}');
+  if (start < 0 || end <= start) {
+    throw FormatException(
+      'Could not find a JSON object in pub outdated output.',
+      stdout,
+    );
+  }
+
+  final jsonStr = stdout.substring(start, end + 1);
+  final json = jsonDecode(jsonStr) as Map<String, dynamic>;
   final packages = json['packages'] as List<dynamic>? ?? [];
 
   return packages
