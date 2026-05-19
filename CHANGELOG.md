@@ -1,3 +1,12 @@
+## 0.2.2
+
+- No user-facing changes.
+- Internal: bumped `test` dev dependency to `^1.31.1` (dogfooded via pubup
+  itself).
+- Internal: `version_test.dart` now reads the version from `pubspec.yaml` at
+  test time instead of hardcoding it, so future releases only require
+  bumping `pubspec.yaml` and `lib/src/version.dart`.
+
 ## 0.2.1
 
 - The once-per-day update notice is now also suppressed automatically when

@@ -6,7 +6,8 @@ import 'package:yaml/yaml.dart';
 
 void main() {
   test('packageVersion matches version in pubspec.yaml', () {
-    final pubspec = loadYaml(File('pubspec.yaml').readAsStringSync()) as YamlMap;
+    final pubspec =
+        loadYaml(File('pubspec.yaml').readAsStringSync()) as YamlMap;
     final pubspecVersion = pubspec['version'] as String;
 
     expect(
