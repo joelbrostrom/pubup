@@ -1,3 +1,18 @@
+## 0.4.0
+
+- **Workspace-coordinated updates.** When the root `pubspec.yaml` declares a
+  `workspace:` list, pubup now updates shared dependencies atomically across
+  all members that declare them: constraints are rewritten in every affected
+  `pubspec.yaml`, then a single root-level `pub get` validates the workspace
+  graph. This fixes the failure mode where per-package `pub add` calls left
+  the workspace in a contradictory intermediate state (e.g. root on
+  `very_good_analysis ^10` while members still pin `^6`).
+- Non-workspace projects keep the existing batched `pub add` strategy.
+- `--package` in workspace mode: coordinated deps are skipped with a warning
+  when a declaring member is outside the filter (run without `--package` for a
+  workspace-wide bump).
+- `dependency_overrides:` are never modified.
+
 ## 0.3.0
 
 - Batch all dependency updates for a package into a single `dart pub add`

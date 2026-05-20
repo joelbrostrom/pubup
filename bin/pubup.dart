@@ -9,6 +9,8 @@ import 'package:pubup/src/update_checker.dart';
 import 'package:pubup/src/updater.dart';
 import 'package:pubup/src/version.dart';
 import 'package:pubup/src/workspace_discovery.dart';
+import 'package:pubup/src/workspace_mode.dart';
+import 'package:pubup/src/workspace_updater.dart';
 
 Future<void> main(List<String> arguments) async {
   final parser = ArgParser()
@@ -114,40 +116,64 @@ Future<void> main(List<String> arguments) async {
       return;
     }
 
-    final reports = <PackageReport>[];
+    final rootPubspec = File('${repoRoot.path}/pubspec.yaml');
 
-    for (final target in targets) {
-      final pubspec = File('${target.path}/pubspec.yaml');
-      final command = isFlutterPackage(pubspec) ? 'flutter' : 'dart';
-      final isRoot = target.path == repoRoot.path;
-      final rel =
-          isRoot ? '.' : target.path.substring(repoRoot.path.length + 1);
-
+    if (isWorkspaceRoot(rootPubspec)) {
       stdout.writeln();
-      stdout.writeln('Package: $rel ($command pub)');
+      stdout.writeln(
+          'Workspace: coordinated updates (${isFlutterPackage(rootPubspec) ? 'flutter' : 'dart'} pub)');
 
-      try {
-        final report = await runUpdatesForPackage(
-          packageDir: target,
-          command: command,
-          includeDev: includeDev,
-          dryRun: dryRun,
-          output: stdout,
-          errorOutput: stderr,
-        );
-        reports.add(report);
-      } on Exception catch (e) {
-        final failedReport = PackageReport(
-          packageDir: target.path,
-          command: command,
-        )..failed = 1;
-        failedReport.failures.add(e.toString());
-        reports.add(failedReport);
-        stderr.writeln('  ! Failed package scan: $e');
+      final workspaceReport = await runUpdatesForWorkspace(
+        repoRoot: repoRoot,
+        scanTargets: targets,
+        allWorkspaceDirs: discoverWorkspaceDirs(repoRoot),
+        includeDev: includeDev,
+        dryRun: dryRun,
+        output: stdout,
+        errorOutput: stderr,
+      );
+
+      exitCode = printWorkspaceReport(
+        workspaceReport,
+        dryRun: dryRun,
+        output: stdout,
+      );
+    } else {
+      final reports = <PackageReport>[];
+
+      for (final target in targets) {
+        final pubspec = File('${target.path}/pubspec.yaml');
+        final command = isFlutterPackage(pubspec) ? 'flutter' : 'dart';
+        final isRoot = target.path == repoRoot.path;
+        final rel =
+            isRoot ? '.' : target.path.substring(repoRoot.path.length + 1);
+
+        stdout.writeln();
+        stdout.writeln('Package: $rel ($command pub)');
+
+        try {
+          final report = await runUpdatesForPackage(
+            packageDir: target,
+            command: command,
+            includeDev: includeDev,
+            dryRun: dryRun,
+            output: stdout,
+            errorOutput: stderr,
+          );
+          reports.add(report);
+        } on Exception catch (e) {
+          final failedReport = PackageReport(
+            packageDir: target.path,
+            command: command,
+          )..failed = 1;
+          failedReport.failures.add(e.toString());
+          reports.add(failedReport);
+          stderr.writeln('  ! Failed package scan: $e');
+        }
       }
-    }
 
-    exitCode = printReport(reports, dryRun: dryRun, output: stdout);
+      exitCode = printReport(reports, dryRun: dryRun, output: stdout);
+    }
   } finally {
     await checkForUpdate(
       currentVersion: packageVersion,

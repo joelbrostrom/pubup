@@ -14,6 +14,8 @@ library;
 export 'src/candidate_collector.dart'
     show CandidateUpdate, CollectionReport, CollectionResult, collectCandidates;
 export 'src/commands/self_update.dart' show runSelfUpdate;
+export 'src/constraint_rewriter.dart'
+    show RewriteResult, rewriteConstraint, standardConstraintPattern;
 export 'src/outdated_runner.dart' show OutdatedPackage, getOutdatedPackages;
 export 'src/pubspec_parser.dart'
     show
@@ -21,7 +23,8 @@ export 'src/pubspec_parser.dart'
         PubspecDependencies,
         isFlutterPackage,
         parseDependencyEntries;
-export 'src/reporter.dart' show PackageReport, printReport;
+export 'src/reporter.dart'
+    show PackageReport, WorkspaceReport, printReport, printWorkspaceReport;
 export 'src/update_checker.dart'
     show
         checkForUpdate,
@@ -32,3 +35,11 @@ export 'src/update_checker.dart'
 export 'src/updater.dart' show runUpdatesForPackage;
 export 'src/version.dart' show packageVersion;
 export 'src/workspace_discovery.dart' show discoverWorkspaceDirs, filterTargets;
+export 'src/workspace_mode.dart'
+    show isWorkspaceRoot, isWorkspaceRootFromString;
+export 'src/workspace_updater.dart'
+    show
+        OutdatedPackagesFetcher,
+        PubGetRunner,
+        WorkspaceMemberCandidate,
+        runUpdatesForWorkspace;

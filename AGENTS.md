@@ -8,7 +8,8 @@ Guidance for coding agents (Cursor, Claude Code, Codex, Aider, etc.) using
 A CLI that rewrites version constraints in `pubspec.yaml` to the latest
 resolvable versions, across single packages and workspaces.
 
-- It changes `pubspec.yaml` (and `pubspec.lock` as a side effect of `pub add`).
+- It changes `pubspec.yaml` (and `pubspec.lock` via `pub add` or root `pub get`
+  in workspace mode).
 - It does **not** upgrade past constraints declared by other workspace
   packages or the SDK.
 - It is fully non-interactive. It never prompts.
@@ -40,16 +41,20 @@ latest versions" in a Dart/Flutter project, `pubup` is the right tool.
 ## Flags you'll actually use
 
 - `--dry-run` — preview; always start here.
-- `--package <name>` — limit to one workspace package. Repeatable.
+- `--package <name>` — limit scanning to specific workspace package(s);
+  repeatable. In workspace mode, coordinated deps that are also declared in
+  unfiltered members are skipped with a warning — use no `--package` filter
+  for workspace-wide shared bumps (e.g. `very_good_analysis` across all
+  packages).
 - `--no-dev` — skip `dev_dependencies`.
 - `--root <path>` — when not invoking from the project root.
 
 ## Reading the output
 
 - Exit code `0` = success (including "nothing to update").
-- Exit code `1` = at least one `dart pub add` failed. Failures are printed
-  per-package under each `Package:` block; the trailing `Totals:` line shows
-  the aggregate.
+- Exit code `1` = at least one update failed. Failures are listed under
+  `Package:` (single-package) or `Workspace:` (coordinated) output; the
+  trailing `Totals:` line shows the aggregate.
 - `git diff pubspec.yaml` is the most reliable signal of what changed. Prefer
   it over scraping stdout.
 
@@ -62,8 +67,18 @@ Skipped automatically (safe to assume these stay as-is):
   complex ranges)
 - Dependencies already at `^<resolvable>`
 - Transitive dependencies (only direct `dependencies` / `dev_dependencies`)
+- `dependency_overrides:` (workspace and single-package mode)
 
 If the user needs one of these updated, do it manually with `dart pub add`.
+
+## Dart pub workspaces
+
+When the root `pubspec.yaml` has a `workspace:` section, pub resolves **one
+shared graph** for all members. pubup uses coordinated updates: for each
+outdated shared dependency it bumps the constraint in **every** member that
+declares it, then runs `pub get` once at the root. Per-member `pub add` alone
+cannot succeed for non-overlapping major bumps (e.g. root on `^10` while a
+member still pins `^6`).
 
 ## Self-update
 
