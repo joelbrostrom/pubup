@@ -1,3 +1,17 @@
+## 0.3.0
+
+- Batch all dependency updates for a package into a single `dart pub add`
+  (or `flutter pub add`) invocation. Previously pubup invoked `pub add` once
+  per dependency, triggering a full pub resolution each time — on a workspace
+  with 127 changes this took ~30 minutes. The batched call runs the pub
+  solver once per package, typically yielding a 10×+ speedup on large
+  workspaces.
+- On batched-call failure (e.g. one dep cannot be resolved), pubup
+  automatically falls back to per-dependency `pub add` calls so individual
+  failures are still attributed to the exact dep that failed.
+- No CLI or output-format changes; per-dependency log lines, exit codes,
+  and the `Totals:` summary all behave as before.
+
 ## 0.2.2
 
 - No user-facing changes.

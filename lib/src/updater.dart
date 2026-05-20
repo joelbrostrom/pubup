@@ -10,6 +10,12 @@ import 'package:pubup/src/reporter.dart';
 /// Returns a [PackageReport] summarising what was changed, skipped, or failed.
 ///
 /// When [dryRun] is `true`, candidates are printed but no files are modified.
+///
+/// All candidates for the package are applied in a single `pub add` invocation
+/// so the pub solver only runs once per package instead of once per dependency.
+/// If the batched call fails (e.g. one dep cannot be resolved), the updater
+/// falls back to per-candidate `pub add` calls to preserve accurate per-dep
+/// failure attribution.
 Future<PackageReport> runUpdatesForPackage({
   required Directory packageDir,
   required String command,
@@ -34,29 +40,51 @@ Future<PackageReport> runUpdatesForPackage({
     ..skippedNonstandard = result.report.skippedNonstandard
     ..skippedUnknown = result.report.skippedUnknown;
 
+  if (result.candidates.isEmpty) {
+    return report;
+  }
+
+  final dryLabel = dryRun ? ' [dry-run]' : '';
   for (final candidate in result.candidates) {
     report.attempted++;
-
-    final depSpec = candidate.kind == 'dev'
-        ? 'dev:${candidate.name}:${candidate.targetConstraint}'
-        : '${candidate.name}:${candidate.targetConstraint}';
-
-    final dryLabel = dryRun ? ' [dry-run]' : '';
     output.writeln(
       '  - ${candidate.kind.padRight(6)} ${candidate.name}: '
       '${candidate.declaredConstraint} -> ${candidate.targetConstraint} '
       '(resolved=${candidate.currentVersion}, '
       'resolvable=${candidate.resolvableVersion})$dryLabel',
     );
+  }
 
-    if (dryRun) {
-      report.changed++;
-      continue;
-    }
+  if (dryRun) {
+    report.changed += result.candidates.length;
+    return report;
+  }
 
+  final specs = result.candidates.map(_specFor).toList(growable: false);
+
+  final batchResult = await Process.run(
+    command,
+    ['pub', 'add', ...specs],
+    workingDirectory: packageDir.path,
+  );
+
+  if (batchResult.exitCode == 0) {
+    report.changed += result.candidates.length;
+    return report;
+  }
+
+  // Batched call failed (likely a single bad version blocking resolution).
+  // Retry each candidate individually so we can report exactly which deps
+  // succeeded and which failed.
+  errorOutput.writeln(
+    '  ! Batched update failed; retrying ${result.candidates.length} '
+    'updates individually to identify failures...',
+  );
+
+  for (final candidate in result.candidates) {
     final addResult = await Process.run(
       command,
-      ['pub', 'add', depSpec],
+      ['pub', 'add', _specFor(candidate)],
       workingDirectory: packageDir.path,
     );
 
@@ -73,3 +101,7 @@ Future<PackageReport> runUpdatesForPackage({
 
   return report;
 }
+
+String _specFor(CandidateUpdate candidate) => candidate.kind == 'dev'
+    ? 'dev:${candidate.name}:${candidate.targetConstraint}'
+    : '${candidate.name}:${candidate.targetConstraint}';

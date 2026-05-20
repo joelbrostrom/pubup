@@ -70,8 +70,12 @@ pubup --root /path/to/project
    packages) for each package.
 3. **Compares declared constraints** in `pubspec.yaml` against the latest
    resolvable version reported by pub.
-4. **Updates constraints** via `dart pub add <name>:^<resolvable>` for each
-   dependency where the declared constraint is behind.
+4. **Updates constraints** via a single batched `dart pub add` per package
+   (all out-of-date deps in one call), so the pub solver runs once per
+   package instead of once per dependency. If the batched call fails — for
+   example, when one dep cannot be resolved — pubup falls back to
+   per-dependency `dart pub add` calls so individual failures are reported
+   accurately.
 
 ## What gets skipped
 
