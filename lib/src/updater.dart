@@ -44,14 +44,25 @@ Future<PackageReport> runUpdatesForPackage({
     return report;
   }
 
-  final dryLabel = dryRun ? ' [dry-run]' : '';
+  final columns = CandidateColumns.fromRows(
+    names: result.candidates.map((c) => c.name),
+    fromConstraints: result.candidates.map((c) => c.declaredConstraint),
+    toConstraints: result.candidates.map((c) => c.targetConstraint),
+  );
+
   for (final candidate in result.candidates) {
     report.attempted++;
     output.writeln(
-      '  - ${candidate.kind.padRight(6)} ${candidate.name}: '
-      '${candidate.declaredConstraint} -> ${candidate.targetConstraint} '
-      '(resolved=${candidate.currentVersion}, '
-      'resolvable=${candidate.resolvableVersion})$dryLabel',
+      formatCandidateRow(
+        columns: columns,
+        name: candidate.name,
+        kind: candidate.kind,
+        fromConstraint: candidate.declaredConstraint,
+        toConstraint: candidate.targetConstraint,
+        trailing: candidate.currentVersion != candidate.resolvableVersion
+            ? '(was ${candidate.currentVersion})'
+            : null,
+      ),
     );
   }
 

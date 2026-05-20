@@ -119,9 +119,10 @@ Future<void> main(List<String> arguments) async {
     final rootPubspec = File('${repoRoot.path}/pubspec.yaml');
 
     if (isWorkspaceRoot(rootPubspec)) {
+      final pubCmd = isFlutterPackage(rootPubspec) ? 'flutter' : 'dart';
       stdout.writeln();
-      stdout.writeln(
-          'Workspace: coordinated updates (${isFlutterPackage(rootPubspec) ? 'flutter' : 'dart'} pub)');
+      stdout.writeln('Workspace: ${_basename(repoRoot.path)} ($pubCmd pub)');
+      stdout.writeln();
 
       final workspaceReport = await runUpdatesForWorkspace(
         repoRoot: repoRoot,
@@ -150,6 +151,7 @@ Future<void> main(List<String> arguments) async {
 
         stdout.writeln();
         stdout.writeln('Package: $rel ($command pub)');
+        stdout.writeln();
 
         try {
           final report = await runUpdatesForPackage(
@@ -183,6 +185,14 @@ Future<void> main(List<String> arguments) async {
   }
 
   exit(exitCode);
+}
+
+String _basename(String path) {
+  final sep = path.lastIndexOf('/');
+  final sepWin = path.lastIndexOf(r'\');
+  final last = sep > sepWin ? sep : sepWin;
+  final name = last < 0 ? path : path.substring(last + 1);
+  return name.isEmpty ? path : name;
 }
 
 void _printHelp(ArgParser parser) {

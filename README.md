@@ -73,8 +73,9 @@ pubup --root /path/to/project
 4. **Updates constraints** using one of two strategies:
    - **Workspace projects** (root declares `workspace:`): shared dependencies
      are updated **coordinated** across every member that declares them.
-     pubup rewrites constraints in all affected `pubspec.yaml` files, then runs
-     a single root-level `pub get` per dependency to validate the shared graph.
+     pubup rewrites all affected `pubspec.yaml` files, then runs one root-level
+     `pub get` for the whole batch. On solver failure, it retries per dependency
+     to attribute the exact failure.
    - **Single-package projects**: a single batched `dart pub add` per package
      (all out-of-date deps in one call). If the batched call fails, pubup
      falls back to per-dependency `dart pub add` calls so individual failures
@@ -120,18 +121,42 @@ The tool intentionally skips dependencies that:
 
 ## Example output
 
+Single package:
+
 ```
 Package: . (flutter pub)
-  - direct go_router: ^17.0.0 -> ^17.1.0 (resolved=17.1.0, resolvable=17.1.0)
-  - direct firebase_core: ^4.2.1 -> ^4.6.0 (resolved=4.6.0, resolvable=4.6.0)
-  - dev    very_good_analysis: ^10.0.0 -> ^10.2.0 (resolved=10.2.0, resolvable=10.2.0)
+
+  go_router           direct  ^17.0.0  ->  ^17.1.0
+  firebase_core       direct  ^4.2.1   ->  ^4.6.0
+  very_good_analysis  dev     ^10.0.0  ->  ^10.2.0
 
 Summary
-=======
-- .: changed=3, failed=0
-
-Totals: attempted=3, changed=3, failed=0
+-------
+  Updated  3
+  Failed   0
 ```
+
+Workspace (rows show shared `from` constraints across members and how many
+members each coordinated update touches):
+
+```
+Workspace: my-app (flutter pub)
+
+  build_runner        dev     ^2.4.13, ^2.4.15  ->  ^2.15.0    8 members
+  freezed             dev     ^3.0.3, ^3.0.6    ->  ^3.2.5     6 members
+  very_good_analysis  dev     ^6.0.0            ->  ^10.2.0    39 members
+  bloc                direct  ^9.0.0            ->  ^9.2.1     4 members
+  go_router           direct  ^15.1.2           ->  ^17.2.3    2 members
+
+Summary
+-------
+  Updated  175 constraints across 56 dependencies
+  Failed   0
+  Skipped  54 up-to-date, 84 non-hosted, 3041 transitive
+```
+
+When updates fail, the resolver error is wrapped under a `Failures` section
+above the summary so the totals stay visible at the bottom of the output.
 
 ## Contributing
 

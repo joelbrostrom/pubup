@@ -83,7 +83,11 @@ void main() {
       expect(pubGetCalls, 0);
       expect(report.attempted, 1);
       expect(report.changed, 3);
-      expect(output.toString(), contains('coordinated'));
+      final printed = output.toString();
+      expect(printed, contains('shared_dep'));
+      expect(printed, contains('^1.0.0'));
+      expect(printed, contains('^1.2.0'));
+      expect(printed, contains('3 members'));
       expect(
         File('${tempDir.path}/pubspec.yaml').readAsStringSync(),
         contains('shared_dep: ^1.0.0'),

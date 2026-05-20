@@ -99,20 +99,43 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
     return report;
   }
 
-  final dryLabel = dryRun ? ' [dry-run]' : '';
   final sortedKeys = candidatesByKey.keys.toList()..sort();
 
+  // Pre-compute per-row metadata (declaring members + joined "from"
+  // constraints) so we can size the candidate-row table columns up front,
+  // before any file mutation.
+  final rowMeta = <String, _RowMeta>{};
   for (final key in sortedKeys) {
     final members = candidatesByKey[key]!;
     final first = members.first.candidate;
-    final section = first.kind == 'dev' ? 'dev_dependencies' : 'dependencies';
-
-    final allDeclarers = _findDeclarers(
+    final declarers = _findDeclarers(
       allWorkspaceDirs: allWorkspaceDirs,
       repoRoot: repoRoot,
       packageName: first.name,
       kind: first.kind,
     );
+    final fromConstraint = members
+        .map((m) => m.candidate.declaredConstraint)
+        .toSet()
+        .join(', ');
+    rowMeta[key] = _RowMeta(
+      candidate: first,
+      declarers: declarers,
+      fromConstraint: fromConstraint,
+    );
+  }
+
+  final columns = CandidateColumns.fromRows(
+    names: rowMeta.values.map((m) => m.candidate.name),
+    fromConstraints: rowMeta.values.map((m) => m.fromConstraint),
+    toConstraints: rowMeta.values.map((m) => m.candidate.targetConstraint),
+  );
+
+  for (final key in sortedKeys) {
+    final meta = rowMeta[key]!;
+    final first = meta.candidate;
+    final allDeclarers = meta.declarers;
+    final section = first.kind == 'dev' ? 'dev_dependencies' : 'dependencies';
 
     if (usingPackageFilter) {
       final scanPaths = scanTargets.map((d) => d.path).toSet();
@@ -131,16 +154,19 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
       }
     }
 
-    final targetConstraint = first.targetConstraint;
-    final sampleOld =
-        members.map((m) => m.candidate.declaredConstraint).toSet().join(', ');
+    final memberCount = allDeclarers.length;
+    final trailing = '$memberCount ${memberCount == 1 ? "member" : "members"}';
 
     report.attempted++;
     output.writeln(
-      '  - coordinated ${first.kind.padRight(6)} ${first.name}: '
-      '$sampleOld -> $targetConstraint '
-      '(resolved=${first.currentVersion}, resolvable=${first.resolvableVersion}, '
-      'members=${allDeclarers.length})$dryLabel',
+      formatCandidateRow(
+        columns: columns,
+        name: first.name,
+        kind: first.kind,
+        fromConstraint: meta.fromConstraint,
+        toConstraint: first.targetConstraint,
+        trailing: trailing,
+      ),
     );
 
     if (dryRun) {
@@ -162,7 +188,7 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
         content: file.readAsStringSync(),
         section: section,
         packageName: first.name,
-        newConstraint: targetConstraint,
+        newConstraint: first.targetConstraint,
       );
       if (!rewrite.changed) {
         rewriteFailed = true;
@@ -196,6 +222,18 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
   }
 
   return report;
+}
+
+class _RowMeta {
+  const _RowMeta({
+    required this.candidate,
+    required this.declarers,
+    required this.fromConstraint,
+  });
+
+  final CandidateUpdate candidate;
+  final List<_Declarer> declarers;
+  final String fromConstraint;
 }
 
 /// Runs `pub get` at the workspace root.
