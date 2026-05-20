@@ -33,9 +33,9 @@ typedef OutdatedPackagesFetcher = Future<List<OutdatedPackage>> Function(
 
 /// Runs coordinated dependency updates across a Dart pub workspace.
 ///
-/// Dependencies shared by multiple members are updated atomically: every
-/// declaring `pubspec.yaml` is rewritten, then a single root-level `pub get`
-/// validates the workspace graph.
+/// Dependencies shared by multiple members are updated atomically. Workspace
+/// mode tries one big batch (all rewrites + a single root `pub get`) first,
+/// then falls back to per-dependency batches when resolution fails.
 Future<WorkspaceReport> runUpdatesForWorkspace({
   required Directory repoRoot,
   required List<Directory> scanTargets,
@@ -101,9 +101,6 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
 
   final sortedKeys = candidatesByKey.keys.toList()..sort();
 
-  // Pre-compute per-row metadata (declaring members + joined "from"
-  // constraints) so we can size the candidate-row table columns up front,
-  // before any file mutation.
   final rowMeta = <String, _RowMeta>{};
   for (final key in sortedKeys) {
     final members = candidatesByKey[key]!;
@@ -114,10 +111,8 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
       packageName: first.name,
       kind: first.kind,
     );
-    final fromConstraint = members
-        .map((m) => m.candidate.declaredConstraint)
-        .toSet()
-        .join(', ');
+    final fromConstraint =
+        members.map((m) => m.candidate.declaredConstraint).toSet().join(', ');
     rowMeta[key] = _RowMeta(
       candidate: first,
       declarers: declarers,
@@ -131,11 +126,12 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
     toConstraints: rowMeta.values.map((m) => m.candidate.targetConstraint),
   );
 
+  final eligibleRows = <_RowMeta>[];
+
   for (final key in sortedKeys) {
     final meta = rowMeta[key]!;
     final first = meta.candidate;
     final allDeclarers = meta.declarers;
-    final section = first.kind == 'dev' ? 'dev_dependencies' : 'dependencies';
 
     if (usingPackageFilter) {
       final scanPaths = scanTargets.map((d) => d.path).toSet();
@@ -154,6 +150,8 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
       }
     }
 
+    eligibleRows.add(meta);
+
     final memberCount = allDeclarers.length;
     final trailing = '$memberCount ${memberCount == 1 ? "member" : "members"}';
 
@@ -168,57 +166,54 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
         trailing: trailing,
       ),
     );
+  }
 
-    if (dryRun) {
-      report.changed += allDeclarers.length;
-      continue;
+  if (eligibleRows.isEmpty) {
+    return report;
+  }
+
+  if (dryRun) {
+    for (final row in eligibleRows) {
+      report.changed += row.declarers.length;
     }
+    return report;
+  }
 
-    final snapshots = <String, String>{};
-    for (final declarer in allDeclarers) {
-      final path = '${declarer.packageDir.path}/pubspec.yaml';
-      snapshots[path] = File(path).readAsStringSync();
-    }
+  final bigBatch = await _applyCoordinatedBatch(
+    rows: eligibleRows,
+    command: command,
+    repoRoot: repoRoot,
+    runPubGet: runPubGet,
+  );
 
-    var rewriteFailed = false;
-    for (final declarer in allDeclarers) {
-      final path = '${declarer.packageDir.path}/pubspec.yaml';
-      final file = File(path);
-      final rewrite = rewriteConstraint(
-        content: file.readAsStringSync(),
-        section: section,
-        packageName: first.name,
-        newConstraint: first.targetConstraint,
-      );
-      if (!rewrite.changed) {
-        rewriteFailed = true;
-        break;
-      }
-      file.writeAsStringSync(rewrite.content);
-    }
+  if (bigBatch.succeeded) {
+    report.changed += bigBatch.membersChanged;
+    return report;
+  }
 
-    if (rewriteFailed) {
-      _restoreSnapshots(snapshots);
+  errorOutput.writeln(
+    '  ! Big-batch pub get failed; retrying ${eligibleRows.length} '
+    'coordinated updates individually to identify failures...',
+  );
+
+  for (final row in eligibleRows) {
+    final single = await _applyCoordinatedBatch(
+      rows: [row],
+      command: command,
+      repoRoot: repoRoot,
+      runPubGet: runPubGet,
+    );
+
+    if (single.succeeded) {
+      report.changed += single.membersChanged;
+    } else {
       report.failed++;
-      report.failures.add(
-        '${first.name}: could not rewrite constraint in one or more pubspec.yaml '
-        'files (non-standard constraint form).',
-      );
-      continue;
+      final name = row.candidate.name;
+      final message = single.failureOutput ??
+          'could not rewrite constraint in one or more pubspec.yaml files '
+              '(non-standard constraint form).';
+      report.failures.add('$name: ${message.trim()}');
     }
-
-    final pubGetResult = await runPubGet(command, repoRoot);
-    if (pubGetResult.exitCode != 0) {
-      _restoreSnapshots(snapshots);
-      report.failed++;
-      final failureOutput = (pubGetResult.stderr as String).trim().isNotEmpty
-          ? pubGetResult.stderr as String
-          : pubGetResult.stdout as String;
-      report.failures.add('${first.name}: ${failureOutput.trim()}');
-      continue;
-    }
-
-    report.changed += allDeclarers.length;
   }
 
   return report;
@@ -234,6 +229,86 @@ class _RowMeta {
   final CandidateUpdate candidate;
   final List<_Declarer> declarers;
   final String fromConstraint;
+}
+
+class _BatchOutcome {
+  const _BatchOutcome({
+    required this.succeeded,
+    this.failureOutput,
+    this.membersChanged = 0,
+  });
+
+  final bool succeeded;
+  final String? failureOutput;
+  final int membersChanged;
+}
+
+Future<_BatchOutcome> _applyCoordinatedBatch({
+  required List<_RowMeta> rows,
+  required String command,
+  required Directory repoRoot,
+  required PubGetRunner runPubGet,
+}) async {
+  if (rows.isEmpty) {
+    return const _BatchOutcome(succeeded: true, membersChanged: 0);
+  }
+
+  final snapshots = <String, String>{};
+  var membersChanged = 0;
+
+  for (final row in rows) {
+    membersChanged += row.declarers.length;
+    for (final declarer in row.declarers) {
+      final path = '${declarer.packageDir.path}/pubspec.yaml';
+      snapshots.putIfAbsent(
+        path,
+        () => File(path).readAsStringSync(),
+      );
+    }
+  }
+
+  for (final row in rows) {
+    final first = row.candidate;
+    final section = first.kind == 'dev' ? 'dev_dependencies' : 'dependencies';
+
+    for (final declarer in row.declarers) {
+      final path = '${declarer.packageDir.path}/pubspec.yaml';
+      final file = File(path);
+      final rewrite = rewriteConstraint(
+        content: file.readAsStringSync(),
+        section: section,
+        packageName: first.name,
+        newConstraint: first.targetConstraint,
+      );
+      if (!rewrite.changed) {
+        _restoreSnapshots(snapshots);
+        return _BatchOutcome(
+          succeeded: false,
+          failureOutput:
+              'could not rewrite constraint in one or more pubspec.yaml '
+              'files (non-standard constraint form).',
+        );
+      }
+      file.writeAsStringSync(rewrite.content);
+    }
+  }
+
+  final pubGetResult = await runPubGet(command, repoRoot);
+  if (pubGetResult.exitCode != 0) {
+    _restoreSnapshots(snapshots);
+    final failureOutput = (pubGetResult.stderr as String).trim().isNotEmpty
+        ? pubGetResult.stderr as String
+        : pubGetResult.stdout as String;
+    return _BatchOutcome(
+      succeeded: false,
+      failureOutput: failureOutput.trim(),
+    );
+  }
+
+  return _BatchOutcome(
+    succeeded: true,
+    membersChanged: membersChanged,
+  );
 }
 
 /// Runs `pub get` at the workspace root.

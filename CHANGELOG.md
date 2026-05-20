@@ -1,3 +1,14 @@
+## 0.5.0
+
+- **Batch-first workspace updates.** Workspace mode now rewrites all coordinated
+  constraints, then runs a single root `pub get`. If resolution fails, pubup
+  reverts and retries per dependency (same attribution as 0.4.0).
+- Fixes coupled-dependency failures (e.g. `firebase_core`, `firebase_messaging`,
+  and `firebase_analytics` must bump together) that could not resolve when
+  updated one at a time.
+- Typical workspace runs drop from N `pub get` invocations to 1 when everything
+  resolves cleanly. No CLI changes.
+
 ## 0.4.0
 
 - **Workspace-coordinated updates.** When the root `pubspec.yaml` declares a

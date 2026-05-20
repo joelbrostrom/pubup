@@ -74,11 +74,13 @@ If the user needs one of these updated, do it manually with `dart pub add`.
 ## Dart pub workspaces
 
 When the root `pubspec.yaml` has a `workspace:` section, pub resolves **one
-shared graph** for all members. pubup uses coordinated updates: for each
-outdated shared dependency it bumps the constraint in **every** member that
-declares it, then runs `pub get` once at the root. Per-member `pub add` alone
-cannot succeed for non-overlapping major bumps (e.g. root on `^10` while a
-member still pins `^6`).
+shared graph** for all members. pubup uses coordinated updates: it bumps every
+outdated shared dependency in **every** member that declares it, then runs
+**one** root `pub get`. If that fails, it reverts and retries per dependency so
+failures are attributed exactly (e.g. Firebase packages that must move together
+resolve in the big batch; a single bad dep still surfaces on retry). Per-member
+`pub add` alone cannot succeed for non-overlapping major bumps (e.g. root on
+`^10` while a member still pins `^6`).
 
 ## Self-update
 
