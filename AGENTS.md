@@ -82,6 +82,20 @@ resolve in the big batch; a single bad dep still surfaces on retry). Per-member
 `pub add` alone cannot succeed for non-overlapping major bumps (e.g. root on
 `^10` while a member still pins `^6`).
 
+## Progress indicator
+
+When run in a terminal, pubup prints a self-replacing status line on
+stderr while it is busy (per-member `pub outdated` scans, the root
+`pub get`, per-dep retries). The line is auto-suppressed when:
+
+- stderr is not a TTY (i.e. you're capturing it from an agent or pipeline)
+- `CI=true`
+- `TERM=dumb`
+- `PUBUP_DISABLE_PROGRESS=1`
+
+You generally do not need to manage this. If your tooling tries to parse
+stderr as plain text and chokes on `\r`, set `PUBUP_DISABLE_PROGRESS=1`.
+
 ## Self-update
 
 `pubup update` reinstalls pubup from pub.dev. The CLI also prints a one-line

@@ -1,3 +1,19 @@
+## 0.5.1
+
+- **Live progress indicator.** Workspace and single-package runs now show a
+  one-line, self-replacing status on stderr while pubup is busy
+  (`Scanning packages/auth (3/56)`, `Running flutter pub get`,
+  `Retrying very_good_analysis (4/9)`, …) with a blank padding line
+  reserved below it for visual breathing room. This eliminates the long
+  silent gap between the `Workspace:` header and the first table row on
+  large workspaces. The line is animated with a spinner so liveness is
+  visible even when one step takes a while.
+- The indicator is automatically disabled when stderr is not a TTY (CI
+  logs, pipes, agent capture), when `CI=true`, when `TERM=dumb`, or when
+  `PUBUP_DISABLE_PROGRESS=1`.
+- No CLI changes; stdout output and exit codes are byte-identical to
+  previous releases.
+
 ## 0.5.0
 
 - **Batch-first workspace updates.** Workspace mode now rewrites all coordinated

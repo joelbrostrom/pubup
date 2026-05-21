@@ -25,6 +25,8 @@ export 'src/pubspec_parser.dart'
         parseDependencyEntries;
 export 'src/reporter.dart'
     show PackageReport, WorkspaceReport, printReport, printWorkspaceReport;
+export 'src/status_line.dart'
+    show StatusLine, StatusReporter, disableProgressEnv, noopStatusReporter;
 export 'src/update_checker.dart'
     show
         checkForUpdate,

@@ -4,6 +4,7 @@ import 'package:pubup/src/candidate_collector.dart';
 import 'package:pubup/src/outdated_runner.dart';
 import 'package:pubup/src/pubspec_parser.dart';
 import 'package:pubup/src/reporter.dart';
+import 'package:pubup/src/status_line.dart';
 
 /// Runs the full update workflow for a single [packageDir].
 ///
@@ -23,10 +24,16 @@ Future<PackageReport> runUpdatesForPackage({
   required bool dryRun,
   required StringSink output,
   required StringSink errorOutput,
+  StatusReporter? onStatus,
 }) async {
+  final reportStatus = onStatus ?? noopStatusReporter;
   final pubspec = File('${packageDir.path}/pubspec.yaml');
   final deps = parseDependencyEntries(pubspec);
+
+  reportStatus('Scanning for outdated dependencies');
   final outdated = await getOutdatedPackages(command, packageDir);
+  reportStatus(null);
+
   final result = collectCandidates(
     outdatedPackages: outdated,
     deps: deps,
@@ -73,11 +80,13 @@ Future<PackageReport> runUpdatesForPackage({
 
   final specs = result.candidates.map(_specFor).toList(growable: false);
 
+  reportStatus('Running $command pub add');
   final batchResult = await Process.run(
     command,
     ['pub', 'add', ...specs],
     workingDirectory: packageDir.path,
   );
+  reportStatus(null);
 
   if (batchResult.exitCode == 0) {
     report.changed += result.candidates.length;
@@ -92,7 +101,11 @@ Future<PackageReport> runUpdatesForPackage({
     'updates individually to identify failures...',
   );
 
-  for (final candidate in result.candidates) {
+  for (var i = 0; i < result.candidates.length; i++) {
+    final candidate = result.candidates[i];
+    reportStatus(
+      'Retrying ${candidate.name} (${i + 1}/${result.candidates.length})',
+    );
     final addResult = await Process.run(
       command,
       ['pub', 'add', _specFor(candidate)],
@@ -109,6 +122,7 @@ Future<PackageReport> runUpdatesForPackage({
       report.failures.add('${candidate.name}: ${failureOutput.trim()}');
     }
   }
+  reportStatus(null);
 
   return report;
 }

@@ -5,6 +5,7 @@ import 'package:pub_updater/pub_updater.dart';
 import 'package:pubup/src/commands/self_update.dart';
 import 'package:pubup/src/pubspec_parser.dart';
 import 'package:pubup/src/reporter.dart';
+import 'package:pubup/src/status_line.dart';
 import 'package:pubup/src/update_checker.dart';
 import 'package:pubup/src/updater.dart';
 import 'package:pubup/src/version.dart';
@@ -96,6 +97,7 @@ Future<void> main(List<String> arguments) async {
   final repoRoot = Directory(results.option('root')!).absolute;
 
   var exitCode = 0;
+  final statusLine = StatusLine();
 
   try {
     List<Directory> targets;
@@ -132,6 +134,7 @@ Future<void> main(List<String> arguments) async {
         dryRun: dryRun,
         output: stdout,
         errorOutput: stderr,
+        onStatus: statusLine.update,
       );
 
       exitCode = printWorkspaceReport(
@@ -161,9 +164,11 @@ Future<void> main(List<String> arguments) async {
             dryRun: dryRun,
             output: stdout,
             errorOutput: stderr,
+            onStatus: statusLine.update,
           );
           reports.add(report);
         } on Exception catch (e) {
+          statusLine.clear();
           final failedReport = PackageReport(
             packageDir: target.path,
             command: command,
@@ -177,6 +182,7 @@ Future<void> main(List<String> arguments) async {
       exitCode = printReport(reports, dryRun: dryRun, output: stdout);
     }
   } finally {
+    statusLine.clear();
     await checkForUpdate(
       currentVersion: packageVersion,
       errorOutput: stderr,

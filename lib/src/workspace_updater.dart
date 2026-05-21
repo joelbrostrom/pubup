@@ -5,6 +5,7 @@ import 'package:pubup/src/constraint_rewriter.dart';
 import 'package:pubup/src/outdated_runner.dart';
 import 'package:pubup/src/pubspec_parser.dart';
 import 'package:pubup/src/reporter.dart';
+import 'package:pubup/src/status_line.dart';
 
 /// A dependency update candidate tied to a specific workspace member.
 class WorkspaceMemberCandidate {
@@ -46,9 +47,11 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
   required StringSink errorOutput,
   PubGetRunner? pubGetRunner,
   OutdatedPackagesFetcher? outdatedPackagesFetcher,
+  StatusReporter? onStatus,
 }) async {
   final runPubGet = pubGetRunner ?? _defaultPubGetRunner;
   final fetchOutdated = outdatedPackagesFetcher ?? getOutdatedPackages;
+  final reportStatus = onStatus ?? noopStatusReporter;
   final rootPubspec = File('${repoRoot.path}/pubspec.yaml');
   final command = isFlutterPackage(rootPubspec) ? 'flutter' : 'dart';
   final usingPackageFilter = scanTargets.length < allWorkspaceDirs.length;
@@ -56,17 +59,22 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
   final report = WorkspaceReport(repoRoot: repoRoot.path, command: command);
   final candidatesByKey = <String, List<WorkspaceMemberCandidate>>{};
 
-  for (final target in scanTargets) {
+  final scanTotal = scanTargets.length;
+  for (var i = 0; i < scanTargets.length; i++) {
+    final target = scanTargets[i];
     final pubspec = File('${target.path}/pubspec.yaml');
     final memberCommand = isFlutterPackage(pubspec) ? 'flutter' : 'dart';
     final rel = _relativePath(target.path, repoRoot.path);
     final deps = parseDependencyEntries(pubspec);
+
+    reportStatus('Scanning $rel (${i + 1}/$scanTotal)');
 
     List<OutdatedPackage> outdated;
     try {
       outdated = await fetchOutdated(memberCommand, target);
     } on Exception catch (e) {
       report.scanFailures.add('$rel: $e');
+      reportStatus(null);
       errorOutput.writeln('  ! Failed package scan ($rel): $e');
       continue;
     }
@@ -94,6 +102,8 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
           );
     }
   }
+
+  reportStatus(null);
 
   if (candidatesByKey.isEmpty) {
     return report;
@@ -141,6 +151,7 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
       if (outsideFilter.isNotEmpty) {
         final names = outsideFilter.map((d) => d.relativePath).join(', ');
         report.skippedFilteredCoordination++;
+        reportStatus(null);
         errorOutput.writeln(
           '  ! Skipping coordinated ${first.name}: also declared in '
           'members outside --package filter ($names). '
@@ -179,12 +190,14 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
     return report;
   }
 
+  reportStatus('Running $command pub get');
   final bigBatch = await _applyCoordinatedBatch(
     rows: eligibleRows,
     command: command,
     repoRoot: repoRoot,
     runPubGet: runPubGet,
   );
+  reportStatus(null);
 
   if (bigBatch.succeeded) {
     report.changed += bigBatch.membersChanged;
@@ -196,7 +209,11 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
     'coordinated updates individually to identify failures...',
   );
 
-  for (final row in eligibleRows) {
+  for (var i = 0; i < eligibleRows.length; i++) {
+    final row = eligibleRows[i];
+    reportStatus(
+      'Retrying ${row.candidate.name} (${i + 1}/${eligibleRows.length})',
+    );
     final single = await _applyCoordinatedBatch(
       rows: [row],
       command: command,
@@ -215,6 +232,7 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
       report.failures.add('$name: ${message.trim()}');
     }
   }
+  reportStatus(null);
 
   return report;
 }

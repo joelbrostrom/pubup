@@ -307,6 +307,55 @@ void main() {
       );
     });
 
+    test('reports status during scan, pub get, and per-dep retry', () async {
+      writeFile('pubspec.yaml', _rootPubspecTwoDeps());
+      writeFile('packages/pkg_a/pubspec.yaml', _memberPubspecTwoDeps('pkg_a'));
+      writeFile('packages/pkg_b/pubspec.yaml', _memberPubspecTwoDeps('pkg_b'));
+
+      // Big batch fails; per-dep retries both succeed.
+      pubGetResults = [1, 0, 0];
+
+      final statusEvents = <String?>[];
+      await runUpdatesForWorkspace(
+        repoRoot: tempDir,
+        scanTargets: [
+          tempDir,
+          memberDir('packages/pkg_a'),
+          memberDir('packages/pkg_b'),
+        ],
+        allWorkspaceDirs: [
+          tempDir,
+          memberDir('packages/pkg_a'),
+          memberDir('packages/pkg_b'),
+        ],
+        includeDev: true,
+        dryRun: false,
+        output: StringBuffer(),
+        errorOutput: StringBuffer(),
+        pubGetRunner: fakePubGetRunner,
+        outdatedPackagesFetcher: _fakeTwoDepOutdatedFetcher,
+        onStatus: statusEvents.add,
+      );
+
+      final messages = statusEvents.whereType<String>().toList(growable: false);
+
+      expect(
+        messages.where((m) => m.startsWith('Scanning')).toList(),
+        [
+          'Scanning . (1/3)',
+          'Scanning packages/pkg_a (2/3)',
+          'Scanning packages/pkg_b (3/3)',
+        ],
+      );
+      expect(messages, contains(startsWith('Running ')));
+      expect(messages.where((m) => m.startsWith('Retrying')).length, 2);
+      // The reporter should be cleared (null) at least once before output is
+      // printed and once at the end of the per-dep retry loop.
+      expect(statusEvents.where((m) => m == null).length, greaterThan(1));
+      // Last event must be a clear so the indicator never lingers.
+      expect(statusEvents.last, isNull);
+    });
+
     test('skips coordinated dep when --package filter excludes a declarer',
         () async {
       writeFile('pubspec.yaml', _rootPubspec());
