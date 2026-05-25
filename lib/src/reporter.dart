@@ -53,6 +53,10 @@ class PackageReport {
   /// Number of dependencies that could not be classified.
   int skippedUnknown = 0;
 
+  /// Number of dependencies skipped because the latest in-bound version is
+  /// not above the current version (filtered by `--bump`).
+  int skippedByBumpFilter = 0;
+
   /// Number of dependencies where the update command failed.
   int failed = 0;
 
@@ -97,6 +101,10 @@ class WorkspaceReport {
 
   /// Number of dependencies that could not be classified.
   int skippedUnknown = 0;
+
+  /// Number of dependencies skipped because the latest in-bound version is
+  /// not above the current version (filtered by `--bump`).
+  int skippedByBumpFilter = 0;
 
   /// Coordinated deps skipped because `--package` did not include all members.
   int skippedFilteredCoordination = 0;
@@ -212,6 +220,7 @@ int printWorkspaceReport(
     nonHosted: report.skippedNonHosted,
     nonstandard: report.skippedNonstandard,
     unknown: report.skippedUnknown,
+    byBumpFilter: report.skippedByBumpFilter,
     filteredCoordination: report.skippedFilteredCoordination,
   );
   if (skipDescription.isNotEmpty) {
@@ -251,6 +260,7 @@ int printReport(
   var totalSkippedNonHosted = 0;
   var totalSkippedNonstandard = 0;
   var totalSkippedUnknown = 0;
+  var totalSkippedByBumpFilter = 0;
 
   for (final r in reports) {
     totalChanged += r.changed;
@@ -260,6 +270,7 @@ int printReport(
     totalSkippedNonHosted += r.skippedNonHosted;
     totalSkippedNonstandard += r.skippedNonstandard;
     totalSkippedUnknown += r.skippedUnknown;
+    totalSkippedByBumpFilter += r.skippedByBumpFilter;
   }
 
   if (reports.length > 1) {
@@ -281,6 +292,7 @@ int printReport(
     nonHosted: totalSkippedNonHosted,
     nonstandard: totalSkippedNonstandard,
     unknown: totalSkippedUnknown,
+    byBumpFilter: totalSkippedByBumpFilter,
   );
   if (skipDescription.isNotEmpty) {
     output.writeln('  Skipped  $skipDescription');
@@ -366,6 +378,7 @@ String _describeSkipped({
   required int nonHosted,
   required int nonstandard,
   required int unknown,
+  int byBumpFilter = 0,
   int filteredCoordination = 0,
 }) {
   final parts = <String>[];
@@ -374,6 +387,7 @@ String _describeSkipped({
   if (nonHosted > 0) parts.add('$nonHosted non-hosted');
   if (nonstandard > 0) parts.add('$nonstandard non-standard');
   if (unknown > 0) parts.add('$unknown transitive');
+  if (byBumpFilter > 0) parts.add('$byBumpFilter above --bump');
   if (filteredCoordination > 0) {
     parts.add('$filteredCoordination filtered (--package)');
   }

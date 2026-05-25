@@ -6,6 +6,7 @@ import 'package:pubup/src/outdated_runner.dart';
 import 'package:pubup/src/pubspec_parser.dart';
 import 'package:pubup/src/reporter.dart';
 import 'package:pubup/src/status_line.dart';
+import 'package:pubup/src/version_resolver.dart';
 
 /// A dependency update candidate tied to a specific workspace member.
 class WorkspaceMemberCandidate {
@@ -45,6 +46,8 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
   required bool dryRun,
   required StringSink output,
   required StringSink errorOutput,
+  BumpLevel bumpLevel = BumpLevel.major,
+  VersionsFetcher? fetchVersions,
   PubGetRunner? pubGetRunner,
   OutdatedPackagesFetcher? outdatedPackagesFetcher,
   StatusReporter? onStatus,
@@ -79,10 +82,12 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
       continue;
     }
 
-    final result = collectCandidates(
+    final result = await collectCandidates(
       outdatedPackages: outdated,
       deps: deps,
       includeDev: includeDev,
+      bumpLevel: bumpLevel,
+      fetchVersions: fetchVersions,
     );
 
     report.skippedUpToDate += result.report.skippedUpToDate;
@@ -90,6 +95,7 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
     report.skippedNonHosted += result.report.skippedNonHosted;
     report.skippedNonstandard += result.report.skippedNonstandard;
     report.skippedUnknown += result.report.skippedUnknown;
+    report.skippedByBumpFilter += result.report.skippedByBumpFilter;
 
     for (final candidate in result.candidates) {
       final key = _coordinationKey(candidate.name, candidate.kind);

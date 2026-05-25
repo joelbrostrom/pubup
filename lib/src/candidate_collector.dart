@@ -1,5 +1,6 @@
 import 'package:pubup/src/outdated_runner.dart';
 import 'package:pubup/src/pubspec_parser.dart';
+import 'package:pubup/src/version_resolver.dart';
 
 /// A dependency that should be updated.
 class CandidateUpdate {
@@ -8,7 +9,7 @@ class CandidateUpdate {
     required this.name,
     required this.kind,
     required this.currentVersion,
-    required this.resolvableVersion,
+    required this.targetVersion,
     required this.declaredConstraint,
   });
 
@@ -21,14 +22,18 @@ class CandidateUpdate {
   /// The currently resolved version.
   final String currentVersion;
 
-  /// The latest resolvable version.
-  final String resolvableVersion;
+  /// The version that pubup will write to `pubspec.yaml`.
+  ///
+  /// Without `--bump`, this is the latest resolvable version. With
+  /// `--bump minor` or `--bump patch`, it may be a lower version chosen via
+  /// the pub.dev version list.
+  final String targetVersion;
 
   /// The constraint currently declared in `pubspec.yaml`.
   final String declaredConstraint;
 
   /// The target constraint that will be written, e.g. `"^1.2.3"`.
-  String get targetConstraint => '^$resolvableVersion';
+  String get targetConstraint => '^$targetVersion';
 }
 
 /// Counters tracking how dependencies were classified during collection.
@@ -50,6 +55,10 @@ class CollectionReport {
 
   /// Number of dependencies skipped because they could not be classified.
   int skippedUnknown = 0;
+
+  /// Number of dependencies skipped because the latest in-bound version is
+  /// not above the current version (filtered by `--bump`).
+  int skippedByBumpFilter = 0;
 }
 
 /// Result of collecting update candidates for a single package.
@@ -76,13 +85,23 @@ final _standardConstraint =
 /// the declared constraints in [deps].
 ///
 /// Set [includeDev] to `false` to skip `dev_dependencies`.
-CollectionResult collectCandidates({
+///
+/// [bumpLevel] caps how far constraints may move. With anything other than
+/// [BumpLevel.major], pubup may consult [fetchVersions] to find the highest
+/// in-bound version above the currently resolved version. When
+/// [fetchVersions] is `null`, only the resolvable version reported by `pub
+/// outdated` is considered; candidates whose resolvable version exceeds the
+/// bound are skipped.
+Future<CollectionResult> collectCandidates({
   required List<OutdatedPackage> outdatedPackages,
   required PubspecDependencies deps,
   required bool includeDev,
-}) {
+  BumpLevel bumpLevel = BumpLevel.major,
+  VersionsFetcher? fetchVersions,
+}) async {
   final report = CollectionReport();
   final candidates = <CandidateUpdate>[];
+  final fetcher = fetchVersions ?? ((_) async => const <String>[]);
 
   for (final row in outdatedPackages) {
     if (row.kind != 'direct' && row.kind != 'dev') continue;
@@ -121,7 +140,20 @@ CollectionResult collectCandidates({
       continue;
     }
 
-    final target = '^${row.resolvableVersion}';
+    final targetVersion = await pickTargetVersion(
+      level: bumpLevel,
+      current: row.currentVersion,
+      resolvable: row.resolvableVersion,
+      packageName: row.package,
+      fetchVersions: fetcher,
+    );
+
+    if (targetVersion == null) {
+      report.skippedByBumpFilter++;
+      continue;
+    }
+
+    final target = '^$targetVersion';
     if (declared == target) {
       report.skippedUpToDate++;
       continue;
@@ -132,7 +164,7 @@ CollectionResult collectCandidates({
       name: row.package,
       kind: row.kind,
       currentVersion: row.currentVersion,
-      resolvableVersion: row.resolvableVersion,
+      targetVersion: targetVersion,
       declaredConstraint: declared,
     ));
   }

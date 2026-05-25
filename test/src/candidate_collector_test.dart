@@ -1,6 +1,7 @@
 import 'package:pubup/src/candidate_collector.dart';
 import 'package:pubup/src/outdated_runner.dart';
 import 'package:pubup/src/pubspec_parser.dart';
+import 'package:pubup/src/version_resolver.dart';
 import 'package:test/test.dart';
 
 OutdatedPackage _pkg({
@@ -16,9 +17,13 @@ OutdatedPackage _pkg({
       resolvableVersion: resolvable,
     );
 
+VersionsFetcher _fixed(Map<String, List<String>> byName) => (name) async {
+      return List.of(byName[name] ?? const []);
+    };
+
 void main() {
   group('collectCandidates', () {
-    test('collects hosted deps that need updating', () {
+    test('collects hosted deps that need updating', () async {
       final outdated = [
         _pkg(name: 'http', current: '1.0.0', resolvable: '1.2.0'),
       ];
@@ -32,7 +37,7 @@ void main() {
         dev: {},
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -41,11 +46,12 @@ void main() {
       expect(result.candidates, hasLength(1));
       expect(result.candidates.first.name, 'http');
       expect(result.candidates.first.targetConstraint, '^1.2.0');
+      expect(result.candidates.first.targetVersion, '1.2.0');
       expect(result.candidates.first.declaredConstraint, '^1.0.0');
       expect(result.report.attempted, 1);
     });
 
-    test('skips path dependencies', () {
+    test('skips path dependencies', () async {
       final outdated = [
         _pkg(name: 'local_pkg'),
       ];
@@ -56,7 +62,7 @@ void main() {
         dev: {},
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -66,7 +72,7 @@ void main() {
       expect(result.report.skippedNonHosted, 1);
     });
 
-    test('skips git dependencies', () {
+    test('skips git dependencies', () async {
       final outdated = [_pkg(name: 'git_pkg')];
       final deps = PubspecDependencies(
         direct: {
@@ -75,7 +81,7 @@ void main() {
         dev: {},
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -85,7 +91,7 @@ void main() {
       expect(result.report.skippedNonHosted, 1);
     });
 
-    test('skips sdk dependencies', () {
+    test('skips sdk dependencies', () async {
       final outdated = [_pkg(name: 'flutter')];
       final deps = PubspecDependencies(
         direct: {
@@ -97,7 +103,7 @@ void main() {
         dev: {},
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -107,7 +113,7 @@ void main() {
       expect(result.report.skippedNonHosted, 1);
     });
 
-    test('skips "any" constraints', () {
+    test('skips "any" constraints', () async {
       final outdated = [_pkg(name: 'loose_dep')];
       final deps = PubspecDependencies(
         direct: {
@@ -119,7 +125,7 @@ void main() {
         dev: {},
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -129,7 +135,7 @@ void main() {
       expect(result.report.skippedNonstandard, 1);
     });
 
-    test('skips non-standard constraints like >=1.0.0 <2.0.0', () {
+    test('skips non-standard constraints like >=1.0.0 <2.0.0', () async {
       final outdated = [_pkg(name: 'ranged')];
       final deps = PubspecDependencies(
         direct: {
@@ -141,7 +147,7 @@ void main() {
         dev: {},
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -151,7 +157,7 @@ void main() {
       expect(result.report.skippedNonstandard, 1);
     });
 
-    test('skips already up-to-date dependencies', () {
+    test('skips already up-to-date dependencies', () async {
       final outdated = [
         _pkg(name: 'http', current: '1.2.0', resolvable: '1.2.0'),
       ];
@@ -165,7 +171,7 @@ void main() {
         dev: {},
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -175,13 +181,13 @@ void main() {
       expect(result.report.skippedUpToDate, 1);
     });
 
-    test('skips transitive dependencies', () {
+    test('skips transitive dependencies', () async {
       final outdated = [
         _pkg(name: 'transitive_dep', kind: 'transitive'),
       ];
       final deps = PubspecDependencies(direct: {}, dev: {});
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -190,7 +196,7 @@ void main() {
       expect(result.candidates, isEmpty);
     });
 
-    test('skips dev deps when includeDev is false', () {
+    test('skips dev deps when includeDev is false', () async {
       final outdated = [
         _pkg(name: 'test_pkg', kind: 'dev'),
       ];
@@ -204,7 +210,7 @@ void main() {
         },
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: false,
@@ -214,7 +220,7 @@ void main() {
       expect(result.report.skippedKind, 1);
     });
 
-    test('collects dev deps when includeDev is true', () {
+    test('collects dev deps when includeDev is true', () async {
       final outdated = [
         _pkg(name: 'test_pkg', kind: 'dev', resolvable: '2.0.0'),
       ];
@@ -228,7 +234,7 @@ void main() {
         },
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -238,11 +244,11 @@ void main() {
       expect(result.candidates.first.kind, 'dev');
     });
 
-    test('skips unknown dependencies not in pubspec', () {
+    test('skips unknown dependencies not in pubspec', () async {
       final outdated = [_pkg(name: 'mystery_dep')];
       final deps = const PubspecDependencies(direct: {}, dev: {});
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -252,7 +258,7 @@ void main() {
       expect(result.report.skippedUnknown, 1);
     });
 
-    test('handles build metadata in constraints', () {
+    test('handles build metadata in constraints', () async {
       final outdated = [
         _pkg(
           name: 'provider',
@@ -270,7 +276,7 @@ void main() {
         dev: {},
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -280,7 +286,7 @@ void main() {
       expect(result.candidates.first.targetConstraint, '^6.1.5+1');
     });
 
-    test('handles multiple candidates in one pass', () {
+    test('handles multiple candidates in one pass', () async {
       final outdated = [
         _pkg(name: 'http', resolvable: '1.2.0'),
         _pkg(name: 'yaml', resolvable: '3.2.0'),
@@ -312,7 +318,7 @@ void main() {
         },
       );
 
-      final result = collectCandidates(
+      final result = await collectCandidates(
         outdatedPackages: outdated,
         deps: deps,
         includeDev: true,
@@ -325,6 +331,145 @@ void main() {
       );
       expect(result.report.skippedNonHosted, 1);
       expect(result.report.skippedUpToDate, 1);
+    });
+
+    group('with bumpLevel', () {
+      test('major level uses resolvable version (default)', () async {
+        final outdated = [
+          _pkg(name: 'http', current: '1.2.3', resolvable: '2.5.0'),
+        ];
+        final deps = PubspecDependencies(
+          direct: {
+            'http': const DependencyEntry(
+              source: 'hosted',
+              constraint: '^1.2.3',
+            ),
+          },
+          dev: {},
+        );
+
+        final result = await collectCandidates(
+          outdatedPackages: outdated,
+          deps: deps,
+          includeDev: true,
+          fetchVersions: (_) async => fail('should not be called'),
+        );
+
+        expect(result.candidates, hasLength(1));
+        expect(result.candidates.first.targetConstraint, '^2.5.0');
+      });
+
+      test('minor level uses resolvable when same major', () async {
+        final outdated = [
+          _pkg(name: 'http', current: '1.2.3', resolvable: '1.5.0'),
+        ];
+        final deps = PubspecDependencies(
+          direct: {
+            'http': const DependencyEntry(
+              source: 'hosted',
+              constraint: '^1.2.3',
+            ),
+          },
+          dev: {},
+        );
+
+        final result = await collectCandidates(
+          outdatedPackages: outdated,
+          deps: deps,
+          includeDev: true,
+          bumpLevel: BumpLevel.minor,
+          fetchVersions: (_) async => fail('should not be called'),
+        );
+
+        expect(result.candidates, hasLength(1));
+        expect(result.candidates.first.targetConstraint, '^1.5.0');
+      });
+
+      test('minor level falls back to in-bound version when resolvable is '
+          'a major bump', () async {
+        final outdated = [
+          _pkg(name: 'http', current: '1.2.3', resolvable: '2.0.0'),
+        ];
+        final deps = PubspecDependencies(
+          direct: {
+            'http': const DependencyEntry(
+              source: 'hosted',
+              constraint: '^1.2.3',
+            ),
+          },
+          dev: {},
+        );
+
+        final result = await collectCandidates(
+          outdatedPackages: outdated,
+          deps: deps,
+          includeDev: true,
+          bumpLevel: BumpLevel.minor,
+          fetchVersions: _fixed({
+            'http': ['1.2.3', '1.4.0', '1.5.0', '2.0.0'],
+          }),
+        );
+
+        expect(result.candidates, hasLength(1));
+        expect(result.candidates.first.targetConstraint, '^1.5.0');
+      });
+
+      test('patch level falls back to highest in-bound patch', () async {
+        final outdated = [
+          _pkg(name: 'http', current: '1.2.3', resolvable: '1.5.0'),
+        ];
+        final deps = PubspecDependencies(
+          direct: {
+            'http': const DependencyEntry(
+              source: 'hosted',
+              constraint: '^1.2.3',
+            ),
+          },
+          dev: {},
+        );
+
+        final result = await collectCandidates(
+          outdatedPackages: outdated,
+          deps: deps,
+          includeDev: true,
+          bumpLevel: BumpLevel.patch,
+          fetchVersions: _fixed({
+            'http': ['1.2.3', '1.2.5', '1.2.9', '1.3.0', '1.5.0'],
+          }),
+        );
+
+        expect(result.candidates, hasLength(1));
+        expect(result.candidates.first.targetConstraint, '^1.2.9');
+      });
+
+      test('bumps skipByBumpFilter when no in-bound version exists', () async {
+        final outdated = [
+          _pkg(name: 'http', current: '1.2.3', resolvable: '2.0.0'),
+        ];
+        final deps = PubspecDependencies(
+          direct: {
+            'http': const DependencyEntry(
+              source: 'hosted',
+              constraint: '^1.2.3',
+            ),
+          },
+          dev: {},
+        );
+
+        final result = await collectCandidates(
+          outdatedPackages: outdated,
+          deps: deps,
+          includeDev: true,
+          bumpLevel: BumpLevel.minor,
+          fetchVersions: _fixed({
+            'http': ['1.2.3', '2.0.0'],
+          }),
+        );
+
+        expect(result.candidates, isEmpty);
+        expect(result.report.skippedByBumpFilter, 1);
+        expect(result.report.attempted, 0);
+      });
     });
   });
 }

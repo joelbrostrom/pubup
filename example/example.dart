@@ -36,7 +36,7 @@ Future<void> main() async {
 
     final outdated = await getOutdatedPackages(command, target);
     final deps = parseDependencyEntries(pubspec);
-    final result = collectCandidates(
+    final result = await collectCandidates(
       outdatedPackages: outdated,
       deps: deps,
       includeDev: true,

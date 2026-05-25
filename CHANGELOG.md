@@ -1,3 +1,16 @@
+## 0.6.0
+
+- **`--bump <major|minor|patch>`** lets you cap how far constraints may move
+  during an update. Use `--bump minor` to keep within the current major
+  segment, or `--bump patch` to take only patch-level fixes — handy when
+  refreshing dependencies without absorbing breaking changes.
+- When the latest resolvable version exceeds the chosen bound, pubup queries
+  `https://pub.dev/api/packages/<name>` for the full version list and picks
+  the highest non-prerelease version that fits, instead of skipping the
+  dependency altogether.
+- Dependencies with no qualifying version are surfaced under `Skipped` as
+  `above --bump` in the run summary.
+
 ## 0.5.1
 
 - **Live progress indicator.** Workspace and single-package runs now show a

@@ -17,6 +17,8 @@ export 'src/commands/self_update.dart' show runSelfUpdate;
 export 'src/constraint_rewriter.dart'
     show RewriteResult, rewriteConstraint, standardConstraintPattern;
 export 'src/outdated_runner.dart' show OutdatedPackage, getOutdatedPackages;
+export 'src/pubdev_client.dart'
+    show PubDevClient, PubDevRequestFailure, PubDevResponseFormatException;
 export 'src/pubspec_parser.dart'
     show
         DependencyEntry,
@@ -36,6 +38,13 @@ export 'src/update_checker.dart'
         resolveUpdateCacheDir;
 export 'src/updater.dart' show runUpdatesForPackage;
 export 'src/version.dart' show packageVersion;
+export 'src/version_resolver.dart'
+    show
+        BumpLevel,
+        VersionsFetcher,
+        bumpLevelFromString,
+        pickTargetVersion,
+        versionFitsBound;
 export 'src/workspace_discovery.dart' show discoverWorkspaceDirs, filterTargets;
 export 'src/workspace_mode.dart'
     show isWorkspaceRoot, isWorkspaceRootFromString;

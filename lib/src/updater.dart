@@ -5,6 +5,7 @@ import 'package:pubup/src/outdated_runner.dart';
 import 'package:pubup/src/pubspec_parser.dart';
 import 'package:pubup/src/reporter.dart';
 import 'package:pubup/src/status_line.dart';
+import 'package:pubup/src/version_resolver.dart';
 
 /// Runs the full update workflow for a single [packageDir].
 ///
@@ -24,6 +25,8 @@ Future<PackageReport> runUpdatesForPackage({
   required bool dryRun,
   required StringSink output,
   required StringSink errorOutput,
+  BumpLevel bumpLevel = BumpLevel.major,
+  VersionsFetcher? fetchVersions,
   StatusReporter? onStatus,
 }) async {
   final reportStatus = onStatus ?? noopStatusReporter;
@@ -34,10 +37,12 @@ Future<PackageReport> runUpdatesForPackage({
   final outdated = await getOutdatedPackages(command, packageDir);
   reportStatus(null);
 
-  final result = collectCandidates(
+  final result = await collectCandidates(
     outdatedPackages: outdated,
     deps: deps,
     includeDev: includeDev,
+    bumpLevel: bumpLevel,
+    fetchVersions: fetchVersions,
   );
 
   final report = PackageReport(packageDir: packageDir.path, command: command)
@@ -45,7 +50,8 @@ Future<PackageReport> runUpdatesForPackage({
     ..skippedKind = result.report.skippedKind
     ..skippedNonHosted = result.report.skippedNonHosted
     ..skippedNonstandard = result.report.skippedNonstandard
-    ..skippedUnknown = result.report.skippedUnknown;
+    ..skippedUnknown = result.report.skippedUnknown
+    ..skippedByBumpFilter = result.report.skippedByBumpFilter;
 
   if (result.candidates.isEmpty) {
     return report;
@@ -66,7 +72,7 @@ Future<PackageReport> runUpdatesForPackage({
         kind: candidate.kind,
         fromConstraint: candidate.declaredConstraint,
         toConstraint: candidate.targetConstraint,
-        trailing: candidate.currentVersion != candidate.resolvableVersion
+        trailing: candidate.currentVersion != candidate.targetVersion
             ? '(was ${candidate.currentVersion})'
             : null,
       ),

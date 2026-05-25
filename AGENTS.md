@@ -42,11 +42,18 @@ latest versions" in a Dart/Flutter project, `pubup` is the right tool.
 
 - `--dry-run` — preview; always start here.
 - `--package <name>` — limit scanning to specific workspace package(s);
-  repeatable. In workspace mode, coordinated deps that are also declared in
-  unfiltered members are skipped with a warning — use no `--package` filter
-  for workspace-wide shared bumps (e.g. `very_good_analysis` across all
-  packages).
+ repeatable. In workspace mode, coordinated deps that are also declared in
+ unfiltered members are skipped with a warning — use no `--package` filter
+ for workspace-wide shared bumps (e.g. `very_good_analysis` across all
+ packages).
 - `--no-dev` — skip `dev_dependencies`.
+- `--bump <major|minor|patch>` — cap how far constraints may move. Use
+ `--bump minor` to refresh dependencies without taking new major versions,
+ or `--bump patch` to take patch-level fixes only. When the latest
+ resolvable version exceeds the bound, pubup queries pub.dev for the full
+ version list and picks the highest in-bound version above the locked one.
+ Deps with no qualifying version are surfaced under `Skipped` as
+ `above --bump`.
 - `--root <path>` — when not invoking from the project root.
 
 ## Reading the output

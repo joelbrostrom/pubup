@@ -3,12 +3,14 @@ import 'dart:io';
 import 'package:args/args.dart';
 import 'package:pub_updater/pub_updater.dart';
 import 'package:pubup/src/commands/self_update.dart';
+import 'package:pubup/src/pubdev_client.dart';
 import 'package:pubup/src/pubspec_parser.dart';
 import 'package:pubup/src/reporter.dart';
 import 'package:pubup/src/status_line.dart';
 import 'package:pubup/src/update_checker.dart';
 import 'package:pubup/src/updater.dart';
 import 'package:pubup/src/version.dart';
+import 'package:pubup/src/version_resolver.dart';
 import 'package:pubup/src/workspace_discovery.dart';
 import 'package:pubup/src/workspace_mode.dart';
 import 'package:pubup/src/workspace_updater.dart';
@@ -34,6 +36,18 @@ Future<void> main(List<String> arguments) async {
       'root',
       help: 'Project root directory.',
       defaultsTo: '.',
+    )
+    ..addOption(
+      'bump',
+      help: 'Limit how far constraints may move. '
+          'Use "minor" or "patch" to avoid breaking changes during an update.',
+      allowed: ['major', 'minor', 'patch'],
+      allowedHelp: {
+        'major': 'Allow any update, including major-version bumps (default).',
+        'minor': 'Only allow updates within the current major version.',
+        'patch': 'Only allow updates within the current major.minor.',
+      },
+      defaultsTo: 'major',
     )
     ..addFlag(
       'version',
@@ -95,6 +109,11 @@ Future<void> main(List<String> arguments) async {
   final includeDev = results.flag('dev');
   final packageFilters = results.multiOption('package');
   final repoRoot = Directory(results.option('root')!).absolute;
+  final bumpLevel = bumpLevelFromString(results.option('bump')!);
+
+  final pubDevClient = PubDevClient();
+  Future<List<String>> fetchVersions(String name) =>
+      pubDevClient.getVersions(name);
 
   var exitCode = 0;
   final statusLine = StatusLine();
@@ -134,6 +153,8 @@ Future<void> main(List<String> arguments) async {
         dryRun: dryRun,
         output: stdout,
         errorOutput: stderr,
+        bumpLevel: bumpLevel,
+        fetchVersions: fetchVersions,
         onStatus: statusLine.update,
       );
 
@@ -164,6 +185,8 @@ Future<void> main(List<String> arguments) async {
             dryRun: dryRun,
             output: stdout,
             errorOutput: stderr,
+            bumpLevel: bumpLevel,
+            fetchVersions: fetchVersions,
             onStatus: statusLine.update,
           );
           reports.add(report);
@@ -183,6 +206,7 @@ Future<void> main(List<String> arguments) async {
     }
   } finally {
     statusLine.clear();
+    pubDevClient.close();
     await checkForUpdate(
       currentVersion: packageVersion,
       errorOutput: stderr,

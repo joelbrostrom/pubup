@@ -58,9 +58,37 @@ pubup --package my_package
 # Skip dev_dependencies
 pubup --no-dev
 
+# Avoid major-version bumps (only update within the current major)
+pubup --bump minor
+
+# Only take patch updates
+pubup --bump patch
+
 # Specify a custom project root
 pubup --root /path/to/project
 ```
+
+## Limiting how far constraints move
+
+By default `pubup` bumps each constraint to the latest resolvable version,
+including across major versions. Pass `--bump` to keep updates inside a
+narrower window so you can refresh dependencies without taking breaking
+changes:
+
+| Flag | What gets bumped |
+|------|------------------|
+| `--bump major` (default) | Latest resolvable, including new major versions. |
+| `--bump minor` | Highest version that keeps the leading segment unchanged (e.g. `1.2.3` → up to `1.x.y`, `0.1.2` → up to `0.x.y`). |
+| `--bump patch` | Highest version that keeps the leading two segments unchanged (e.g. `1.2.3` → up to `1.2.x`). |
+
+When the latest resolvable version exceeds the bound, pubup queries
+[pub.dev's package API](https://pub.dev/api/packages/) for the full version
+list and picks the highest non-prerelease version that fits — so you still
+get the newest patch (or minor+patch) instead of skipping the dependency
+entirely.
+
+If no in-bound version above the currently locked one exists, the dependency
+is reported under `Skipped` as `above --bump` in the summary.
 
 ## How it works
 
@@ -104,6 +132,7 @@ The tool intentionally skips dependencies that:
 | `--[no-]dev` | Include `dev_dependencies` | `true` |
 | `--package <name>` | Filter to specific workspace package(s); repeatable | all |
 | `--root <path>` | Project root directory | `.` |
+| `--bump <level>` | Cap how far constraints move: `major`, `minor`, or `patch` | `major` |
 | `--version`, `-V` | Print the current version | — |
 
 ### Subcommands

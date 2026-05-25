@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:pubup/src/outdated_runner.dart';
+import 'package:pubup/src/version_resolver.dart';
 import 'package:pubup/src/workspace_updater.dart';
 import 'package:test/test.dart';
 
@@ -14,6 +15,20 @@ Future<List<OutdatedPackage>> _fakeOutdatedFetcher(
       kind: 'direct',
       currentVersion: '1.0.0',
       resolvableVersion: '1.2.0',
+    ),
+  ];
+}
+
+Future<List<OutdatedPackage>> _fakeMajorBumpOutdatedFetcher(
+  String command,
+  Directory packageDir,
+) async {
+  return [
+    const OutdatedPackage(
+      package: 'shared_dep',
+      kind: 'direct',
+      currentVersion: '1.0.0',
+      resolvableVersion: '2.0.0',
     ),
   ];
 }
@@ -354,6 +369,79 @@ void main() {
       expect(statusEvents.where((m) => m == null).length, greaterThan(1));
       // Last event must be a clear so the indicator never lingers.
       expect(statusEvents.last, isNull);
+    });
+
+    test('bumpLevel=minor picks in-bound version via fetchVersions', () async {
+      writeFile('pubspec.yaml', _rootPubspec());
+      writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+      writeFile('packages/pkg_b/pubspec.yaml', _memberPubspec('pkg_b'));
+
+      final report = await runUpdatesForWorkspace(
+        repoRoot: tempDir,
+        scanTargets: [
+          tempDir,
+          memberDir('packages/pkg_a'),
+          memberDir('packages/pkg_b'),
+        ],
+        allWorkspaceDirs: [
+          tempDir,
+          memberDir('packages/pkg_a'),
+          memberDir('packages/pkg_b'),
+        ],
+        includeDev: true,
+        dryRun: false,
+        output: StringBuffer(),
+        errorOutput: StringBuffer(),
+        bumpLevel: BumpLevel.minor,
+        fetchVersions: (name) async {
+          expect(name, 'shared_dep');
+          return ['1.0.0', '1.4.0', '1.9.0', '2.0.0'];
+        },
+        pubGetRunner: fakePubGetRunner,
+        outdatedPackagesFetcher: _fakeMajorBumpOutdatedFetcher,
+      );
+
+      expect(report.failed, 0);
+      expect(report.changed, 3);
+      for (final path in [
+        'pubspec.yaml',
+        'packages/pkg_a/pubspec.yaml',
+        'packages/pkg_b/pubspec.yaml',
+      ]) {
+        expect(
+          File('${tempDir.path}/$path').readAsStringSync(),
+          contains('shared_dep: ^1.9.0'),
+        );
+      }
+    });
+
+    test('bumpLevel=minor records skipped when no in-bound version exists',
+        () async {
+      writeFile('pubspec.yaml', _rootPubspec());
+      writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+
+      final report = await runUpdatesForWorkspace(
+        repoRoot: tempDir,
+        scanTargets: [tempDir, memberDir('packages/pkg_a')],
+        allWorkspaceDirs: [tempDir, memberDir('packages/pkg_a')],
+        includeDev: true,
+        dryRun: false,
+        output: StringBuffer(),
+        errorOutput: StringBuffer(),
+        bumpLevel: BumpLevel.minor,
+        fetchVersions: (_) async => ['1.0.0', '2.0.0'],
+        pubGetRunner: fakePubGetRunner,
+        outdatedPackagesFetcher: _fakeMajorBumpOutdatedFetcher,
+      );
+
+      expect(report.skippedByBumpFilter, 2);
+      expect(report.attempted, 0);
+      expect(report.changed, 0);
+      expect(pubGetCalls, 0);
+      expect(
+        File('${tempDir.path}/pubspec.yaml').readAsStringSync(),
+        contains('shared_dep: ^1.0.0'),
+      );
     });
 
     test('skips coordinated dep when --package filter excludes a declarer',
