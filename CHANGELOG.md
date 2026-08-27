@@ -1,3 +1,11 @@
+## 0.6.1
+
+- **Fix constraint rewriter losing track of the current section after blank
+  lines.** A blank line inside `dependencies:` or `dev_dependencies:` no longer
+  resets section tracking, so hosted deps listed after path/git blocks (or
+  other gaps) are rewritten correctly. This also lets coordinated workspace
+  batches succeed when those deps must bump together (e.g. Firebase packages).
+
 ## 0.6.0
 
 - **`--bump <major|minor|patch>`** lets you cap how far constraints may move

@@ -151,5 +151,27 @@ dependencies:
       expect(result.changed, isFalse);
       expect(result.content, content);
     });
+
+    test('rewrites deps after blank line within dependencies section', () {
+      const content = '''
+dependencies:
+  local_pkg:
+    path: packages/local_pkg
+
+  http: ^1.0.0
+  equatable: ^2.0.8
+''';
+      final result = rewriteConstraint(
+        content: content,
+        section: 'dependencies',
+        packageName: 'equatable',
+        newConstraint: '^2.1.0',
+      );
+
+      expect(result.changed, isTrue);
+      expect(result.content, contains('  equatable: ^2.1.0'));
+      expect(result.content, contains('  http: ^1.0.0'));
+      expect(result.content, contains('    path: packages/local_pkg'));
+    });
   });
 }

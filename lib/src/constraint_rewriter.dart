@@ -45,9 +45,12 @@ RewriteResult rewriteConstraint({
     final trimmed = line.trimLeft();
 
     if (!_isIndentedLine(line)) {
-      currentSection =
-          trimmed.endsWith(':') ? trimmed.substring(0, trimmed.length - 1) : '';
-      pendingPackage = null;
+      // Blank lines and top-level comments must not reset [currentSection];
+      // only a new unindented `section:` header ends the previous block.
+      if (trimmed.endsWith(':')) {
+        currentSection = trimmed.substring(0, trimmed.length - 1);
+        pendingPackage = null;
+      }
       continue;
     }
 
