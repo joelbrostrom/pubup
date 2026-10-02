@@ -18,6 +18,9 @@ import 'package:pubup/src/version_resolver.dart';
 /// If the batched call fails (e.g. one dep cannot be resolved), the updater
 /// falls back to per-candidate `pub add` calls to preserve accurate per-dep
 /// failure attribution.
+///
+/// [command] (`"dart"` or `"flutter"`) is shown in progress output. `pub`
+/// runs with [executable], which defaults to [command].
 Future<PackageReport> runUpdatesForPackage({
   required Directory packageDir,
   required String command,
@@ -26,15 +29,18 @@ Future<PackageReport> runUpdatesForPackage({
   required StringSink output,
   required StringSink errorOutput,
   BumpLevel bumpLevel = BumpLevel.major,
+  bool allowPrereleases = false,
+  String? executable,
   VersionsFetcher? fetchVersions,
   StatusReporter? onStatus,
 }) async {
   final reportStatus = onStatus ?? noopStatusReporter;
+  final pub = executable ?? command;
   final pubspec = File('${packageDir.path}/pubspec.yaml');
   final deps = parseDependencyEntries(pubspec);
 
   reportStatus('Scanning for outdated dependencies');
-  final outdated = await getOutdatedPackages(command, packageDir);
+  final outdated = await getOutdatedPackages(pub, packageDir);
   reportStatus(null);
 
   final result = await collectCandidates(
@@ -43,6 +49,7 @@ Future<PackageReport> runUpdatesForPackage({
     includeDev: includeDev,
     bumpLevel: bumpLevel,
     fetchVersions: fetchVersions,
+    allowPrereleases: allowPrereleases,
   );
 
   final report = PackageReport(packageDir: packageDir.path, command: command)
@@ -51,7 +58,9 @@ Future<PackageReport> runUpdatesForPackage({
     ..skippedNonHosted = result.report.skippedNonHosted
     ..skippedNonstandard = result.report.skippedNonstandard
     ..skippedUnknown = result.report.skippedUnknown
-    ..skippedByBumpFilter = result.report.skippedByBumpFilter;
+    ..skippedByBumpFilter = result.report.skippedByBumpFilter
+    ..skippedPrerelease = result.report.skippedPrerelease;
+  report.heldBack.addAll(result.heldBack);
 
   if (result.candidates.isEmpty) {
     return report;
@@ -88,7 +97,7 @@ Future<PackageReport> runUpdatesForPackage({
 
   reportStatus('Running $command pub add');
   final batchResult = await Process.run(
-    command,
+    pub,
     ['pub', 'add', ...specs],
     workingDirectory: packageDir.path,
   );
@@ -113,7 +122,7 @@ Future<PackageReport> runUpdatesForPackage({
       'Retrying ${candidate.name} (${i + 1}/${result.candidates.length})',
     );
     final addResult = await Process.run(
-      command,
+      pub,
       ['pub', 'add', _specFor(candidate)],
       workingDirectory: packageDir.path,
     );

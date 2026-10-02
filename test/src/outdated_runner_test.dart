@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:pubup/src/outdated_runner.dart';
 import 'package:test/test.dart';
+
+import '../helpers/fake_sdk.dart';
 
 void main() {
   group('parseOutdatedJson', () {
@@ -17,6 +21,20 @@ void main() {
       expect(result.first.kind, 'direct');
       expect(result.first.currentVersion, '1.2.0');
       expect(result.first.resolvableVersion, '1.3.0');
+      expect(result.first.latestVersion, isNull);
+    });
+
+    test('parses the latest version when present', () {
+      const stdout = '{"packages":['
+          '{"package":"equatable","kind":"direct",'
+          '"current":{"version":"2.1.0"},'
+          '"resolvable":{"version":"2.1.0"},'
+          '"latest":{"version":"3.0.0"}}'
+          ']}';
+
+      final result = parseOutdatedJson(stdout);
+
+      expect(result.single.latestVersion, '3.0.0');
     });
 
     test('ignores Flutter version banner printed after JSON', () {
@@ -75,10 +93,77 @@ void main() {
     });
 
     test('throws FormatException on empty stdout', () {
-      expect(
-        () => parseOutdatedJson(''),
-        throwsA(isA<FormatException>()),
-      );
+      expect(() => parseOutdatedJson(''), throwsA(isA<FormatException>()));
     });
   });
+
+  group('getOutdatedPackages', () {
+    late Directory tempDir;
+    late FakeSdk sdk;
+    late Directory packageDir;
+
+    setUp(() {
+      tempDir = Directory.systemTemp.createTempSync('pubup_outdated_');
+      sdk = FakeSdk.create(tempDir);
+      packageDir = Directory('${tempDir.path}/my_package')..createSync();
+    });
+
+    tearDown(() => tempDir.deleteSync(recursive: true));
+
+    test('runs pub outdated in the package directory', () async {
+      sdk.respond(
+        'outdated',
+        stdout: outdatedJson([
+          outdatedRow('http', current: '1.0.0', resolvable: '1.2.0'),
+        ]),
+      );
+
+      final packages = await getOutdatedPackages(
+        sdk.pubSdk.executable('flutter'),
+        packageDir,
+      );
+
+      expect(packages.single.package, 'http');
+      expect(packages.single.resolvableVersion, '1.2.0');
+      final call = sdk.calls.single;
+      expect(call.executable, 'flutter');
+      expect(call.workingDirectory, packageDir.resolveSymbolicLinksSync());
+      expect(call.arguments, 'pub outdated --json --show-all');
+    });
+
+    test('throws a ProcessException with stderr when pub fails', () async {
+      sdk.respond(
+        'outdated',
+        stdout: 'Resolving dependencies...',
+        stderr: 'Could not find package foo\n',
+        exitCode: 65,
+      );
+      final executable = sdk.pubSdk.executable('dart');
+
+      await expectLater(
+        getOutdatedPackages(executable, packageDir),
+        throwsA(
+          isA<ProcessException>()
+              .having((e) => e.executable, 'executable', executable)
+              .having((e) => e.message, 'message', 'Could not find package foo')
+              .having((e) => e.errorCode, 'errorCode', 65),
+        ),
+      );
+    });
+
+    test('falls back to stdout when pub fails without stderr', () async {
+      sdk.respond('outdated', stdout: 'No pubspec.yaml found.\n', exitCode: 1);
+
+      await expectLater(
+        getOutdatedPackages(sdk.pubSdk.executable('dart'), packageDir),
+        throwsA(
+          isA<ProcessException>().having(
+            (e) => e.message,
+            'message',
+            'No pubspec.yaml found.',
+          ),
+        ),
+      );
+    });
+  }, skip: fakeSdkSkip);
 }

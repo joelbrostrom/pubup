@@ -1,3 +1,34 @@
+## 0.7.0
+
+- **Stable dependencies no longer jump to pre-releases.** `pub outdated` can
+  report a pre-release as resolvable while the latest stable release is older
+  (e.g. `sentry_flutter` `^9.30.0 -> ^10.0.0-rc.2` while `9.30.1` is the
+  latest stable). pubup now picks the newest stable version between the
+  locked and the resolvable version. If only a pre-release is newer, the
+  dependency is reported under `Skipped` as `prerelease-only`. Dependencies
+  already on a pre-release keep moving along pre-releases.
+- **`--prereleases`** opts back in to moving stable dependencies to
+  pre-releases.
+- **pubup uses the project's FVM SDK.** It previously ran `flutter`/`dart`
+  from `PATH`, which in FVM projects is the global default rather than the
+  version pinned in `.fvmrc`, so resolution could silently use the wrong SDK.
+  pubup now runs pub from `.fvm/versions/<version>` (or the legacy
+  `.fvm/flutter_sdk`) and warns when the pinned version is not linked.
+- **`--sdk <path>`** runs pub with a specific Flutter or Dart SDK.
+- **The header shows the SDK in use**, e.g.
+  `SDK: Flutter 3.38.5, Dart 3.10.4 (FVM .fvm/versions/3.38.5)`.
+- **New `Held back` section** lists dependencies whose latest version is
+  blocked by another dependency or the SDK, so they are visible without a
+  separate `pub outdated` run.
+- The `--bump` fallback no longer picks a version above the one pub reports
+  as resolvable.
+- **Fix:** the workspace header showed `Workspace: .` instead of the project
+  folder name when run with the default `--root .`.
+- Docs: `AGENTS.md` referred to a `Totals:` line that no longer exists, and
+  its revert command missed workspace member pubspecs.
+- Allow `pub_updater` 0.6.x (`>=0.5.0 <0.7.0`). The range keeps Dart 3.5+
+  support, since `pub_updater` 0.6.0 requires Dart 3.12.
+
 ## 0.6.1
 
 - **Fix constraint rewriter losing track of the current section after blank

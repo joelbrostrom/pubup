@@ -20,6 +20,28 @@ void main() {
     file.writeAsStringSync(content);
   }
 
+  group('directoryDisplayName', () {
+    test('ignores a trailing . segment', () {
+      final dir = Directory('${tempDir.path}/my_app/.');
+
+      expect(directoryDisplayName(dir), 'my_app');
+    });
+
+    test('ignores a trailing separator', () {
+      expect(
+        directoryDisplayName(Directory('${tempDir.path}/my_app/')),
+        'my_app',
+      );
+    });
+
+    test('resolves a relative . to the current folder name', () {
+      final cwdName =
+          Directory.current.uri.pathSegments.where((s) => s.isNotEmpty).last;
+
+      expect(directoryDisplayName(Directory('.')), cwdName);
+    });
+  });
+
   group('discoverWorkspaceDirs', () {
     test('returns only root when no workspace section', () {
       writeFile('pubspec.yaml', '''

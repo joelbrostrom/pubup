@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:pubup/src/candidate_collector.dart';
+
 /// Maximum width for the package-name column when aligning rows.
 ///
 /// Names longer than this are not truncated; they overflow their cell so
@@ -21,10 +23,7 @@ const int _wrapWidth = 76;
 /// Report for a single workspace package after running updates.
 class PackageReport {
   /// Creates a [PackageReport].
-  PackageReport({
-    required this.packageDir,
-    required this.command,
-  });
+  PackageReport({required this.packageDir, required this.command});
 
   /// The absolute path to the package directory.
   final String packageDir;
@@ -57,20 +56,24 @@ class PackageReport {
   /// not above the current version (filtered by `--bump`).
   int skippedByBumpFilter = 0;
 
+  /// Number of stable dependencies skipped because only a pre-release is
+  /// newer.
+  int skippedPrerelease = 0;
+
   /// Number of dependencies where the update command failed.
   int failed = 0;
 
   /// Failure messages for each failed dependency.
   final List<String> failures = [];
+
+  /// Dependencies whose latest version is blocked by other constraints.
+  final List<HeldBackDependency> heldBack = [];
 }
 
 /// Report for a coordinated workspace update run.
 class WorkspaceReport {
   /// Creates a [WorkspaceReport].
-  WorkspaceReport({
-    required this.repoRoot,
-    required this.command,
-  });
+  WorkspaceReport({required this.repoRoot, required this.command});
 
   /// The absolute path to the workspace root.
   final String repoRoot;
@@ -109,11 +112,21 @@ class WorkspaceReport {
   /// Coordinated deps skipped because `--package` did not include all members.
   int skippedFilteredCoordination = 0;
 
+  /// Number of stable dependencies skipped because only a pre-release is
+  /// newer.
+  int skippedPrerelease = 0;
+
   /// Failure messages for each failed coordinated dependency.
   final List<String> failures = [];
 
   /// Per-member scan failures (e.g. `pub outdated` errors).
   final List<String> scanFailures = [];
+
+  /// Dependencies whose latest version is blocked by other constraints.
+  ///
+  /// Holds one entry per scanned member that declares the dependency. The
+  /// printed report lists each dependency once.
+  final List<HeldBackDependency> heldBack = [];
 }
 
 /// Pre-computed column widths used to align candidate rows in a table.
@@ -191,6 +204,7 @@ int printWorkspaceReport(
   required bool dryRun,
   required StringSink output,
 }) {
+  _writeHeldBackSection(output, report.heldBack);
   _writeFailuresSection(
     output,
     report.failures,
@@ -221,6 +235,7 @@ int printWorkspaceReport(
     nonstandard: report.skippedNonstandard,
     unknown: report.skippedUnknown,
     byBumpFilter: report.skippedByBumpFilter,
+    prerelease: report.skippedPrerelease,
     filteredCoordination: report.skippedFilteredCoordination,
   );
   if (skipDescription.isNotEmpty) {
@@ -244,9 +259,8 @@ int printReport(
   required bool dryRun,
   required StringSink output,
 }) {
-  final allFailures = [
-    for (final r in reports) ...r.failures,
-  ];
+  final allFailures = [for (final r in reports) ...r.failures];
+  _writeHeldBackSection(output, [for (final r in reports) ...r.heldBack]);
   _writeFailuresSection(output, allFailures, const []);
 
   output.writeln();
@@ -261,6 +275,7 @@ int printReport(
   var totalSkippedNonstandard = 0;
   var totalSkippedUnknown = 0;
   var totalSkippedByBumpFilter = 0;
+  var totalSkippedPrerelease = 0;
 
   for (final r in reports) {
     totalChanged += r.changed;
@@ -271,6 +286,7 @@ int printReport(
     totalSkippedNonstandard += r.skippedNonstandard;
     totalSkippedUnknown += r.skippedUnknown;
     totalSkippedByBumpFilter += r.skippedByBumpFilter;
+    totalSkippedPrerelease += r.skippedPrerelease;
   }
 
   if (reports.length > 1) {
@@ -293,6 +309,7 @@ int printReport(
     nonstandard: totalSkippedNonstandard,
     unknown: totalSkippedUnknown,
     byBumpFilter: totalSkippedByBumpFilter,
+    prerelease: totalSkippedPrerelease,
   );
   if (skipDescription.isNotEmpty) {
     output.writeln('  Skipped  $skipDescription');
@@ -304,6 +321,41 @@ int printReport(
   }
 
   return totalFailed > 0 ? 1 : 0;
+}
+
+void _writeHeldBackSection(
+  StringSink output,
+  List<HeldBackDependency> heldBack,
+) {
+  final unique = <String, HeldBackDependency>{
+    for (final dep in heldBack) '${dep.kind}:${dep.name}': dep,
+  };
+  if (unique.isEmpty) return;
+
+  final rows = unique.values.toList()..sort((a, b) => a.name.compareTo(b.name));
+  final nameWidth = math.min(
+    rows.map((r) => r.name.length).reduce(math.max),
+    _maxNameColumn,
+  );
+  final resolvableWidth =
+      rows.map((r) => r.resolvableVersion.length).reduce(math.max);
+
+  final header = 'Held back (${rows.length})';
+  output.writeln();
+  output.writeln(header);
+  output.writeln('-' * header.length);
+  output.writeln(
+    '  Another dependency or the SDK blocks the latest version of these.',
+  );
+  output.writeln();
+
+  for (final row in rows) {
+    output.writeln(
+      '  ${row.name.padRight(nameWidth)}  ${row.kind.padRight(6)}  '
+      'resolvable ${row.resolvableVersion.padRight(resolvableWidth)}  '
+      'latest ${row.latestVersion}',
+    );
+  }
 }
 
 void _writeFailuresSection(
@@ -379,6 +431,7 @@ String _describeSkipped({
   required int nonstandard,
   required int unknown,
   int byBumpFilter = 0,
+  int prerelease = 0,
   int filteredCoordination = 0,
 }) {
   final parts = <String>[];
@@ -388,6 +441,7 @@ String _describeSkipped({
   if (nonstandard > 0) parts.add('$nonstandard non-standard');
   if (unknown > 0) parts.add('$unknown transitive');
   if (byBumpFilter > 0) parts.add('$byBumpFilter above --bump');
+  if (prerelease > 0) parts.add('$prerelease prerelease-only');
   if (filteredCoordination > 0) {
     parts.add('$filteredCoordination filtered (--package)');
   }

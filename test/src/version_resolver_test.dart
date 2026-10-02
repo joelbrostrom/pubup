@@ -2,8 +2,7 @@ import 'package:pub_semver/pub_semver.dart';
 import 'package:pubup/src/version_resolver.dart';
 import 'package:test/test.dart';
 
-VersionsFetcher _fixed(List<String> versions) =>
-    (_) async => List.of(versions);
+VersionsFetcher _fixed(List<String> versions) => (_) async => List.of(versions);
 
 VersionsFetcher _shouldNotBeCalled() => (_) async {
       fail('fetchVersions should not be called');
@@ -140,24 +139,26 @@ void main() {
       expect(target, '1.5.0');
     });
 
-    test('minor falls back to highest in-bound version above current',
-        () async {
-      final target = await pickTargetVersion(
-        level: BumpLevel.minor,
-        current: '1.2.3',
-        resolvable: '2.0.0',
-        packageName: 'foo',
-        fetchVersions: _fixed([
-          '1.2.3',
-          '1.4.0',
-          '1.5.0',
-          '1.5.1',
-          '2.0.0',
-          '2.1.0',
-        ]),
-      );
-      expect(target, '1.5.1');
-    });
+    test(
+      'minor falls back to highest in-bound version above current',
+      () async {
+        final target = await pickTargetVersion(
+          level: BumpLevel.minor,
+          current: '1.2.3',
+          resolvable: '2.0.0',
+          packageName: 'foo',
+          fetchVersions: _fixed([
+            '1.2.3',
+            '1.4.0',
+            '1.5.0',
+            '1.5.1',
+            '2.0.0',
+            '2.1.0',
+          ]),
+        );
+        expect(target, '1.5.1');
+      },
+    );
 
     test('patch falls back to highest patch within current minor', () async {
       final target = await pickTargetVersion(
@@ -165,13 +166,7 @@ void main() {
         current: '1.2.3',
         resolvable: '1.5.0',
         packageName: 'foo',
-        fetchVersions: _fixed([
-          '1.2.3',
-          '1.2.5',
-          '1.2.9',
-          '1.3.0',
-          '1.5.0',
-        ]),
+        fetchVersions: _fixed(['1.2.3', '1.2.5', '1.2.9', '1.3.0', '1.5.0']),
       );
       expect(target, '1.2.9');
     });
@@ -182,32 +177,24 @@ void main() {
         current: '0.1.2',
         resolvable: '1.0.0',
         packageName: 'foo',
-        fetchVersions: _fixed([
-          '0.1.2',
-          '0.1.5',
-          '0.5.0',
-          '1.0.0',
-        ]),
+        fetchVersions: _fixed(['0.1.2', '0.1.5', '0.5.0', '1.0.0']),
       );
       expect(target, '0.5.0');
     });
 
-    test('returns null when no qualifying version is greater than current',
-        () async {
-      final target = await pickTargetVersion(
-        level: BumpLevel.minor,
-        current: '1.2.3',
-        resolvable: '2.0.0',
-        packageName: 'foo',
-        fetchVersions: _fixed([
-          '1.0.0',
-          '1.2.3',
-          '2.0.0',
-          '2.1.0',
-        ]),
-      );
-      expect(target, isNull);
-    });
+    test(
+      'returns null when no qualifying version is greater than current',
+      () async {
+        final target = await pickTargetVersion(
+          level: BumpLevel.minor,
+          current: '1.2.3',
+          resolvable: '2.0.0',
+          packageName: 'foo',
+          fetchVersions: _fixed(['1.0.0', '1.2.3', '2.0.0', '2.1.0']),
+        );
+        expect(target, isNull);
+      },
+    );
 
     test('skips pre-releases when current is stable', () async {
       final target = await pickTargetVersion(
@@ -215,11 +202,7 @@ void main() {
         current: '1.2.3',
         resolvable: '2.0.0',
         packageName: 'foo',
-        fetchVersions: _fixed([
-          '1.2.5',
-          '1.6.0-beta.1',
-          '2.0.0',
-        ]),
+        fetchVersions: _fixed(['1.2.5', '1.6.0-beta.1', '2.0.0']),
       );
       expect(target, '1.2.5');
     });
@@ -252,13 +235,110 @@ void main() {
         current: '1.2.3',
         resolvable: '2.0.0',
         packageName: 'foo',
-        fetchVersions: _fixed([
-          'not-a-version',
-          '1.4.0',
-          '2.0.0',
-        ]),
+        fetchVersions: _fixed(['not-a-version', '1.4.0', '2.0.0']),
       );
       expect(target, '1.4.0');
+    });
+  });
+
+  group('pickTargetVersion with pre-release resolvable', () {
+    test('falls back to the highest stable version for a stable dep', () async {
+      final target = await pickTargetVersion(
+        level: BumpLevel.major,
+        current: '9.30.0',
+        resolvable: '10.0.0-rc.2',
+        packageName: 'sentry_flutter',
+        fetchVersions: _fixed([
+          '9.29.0',
+          '9.30.0',
+          '9.30.1',
+          '10.0.0-rc.1',
+          '10.0.0-rc.2',
+        ]),
+      );
+      expect(target, '9.30.1');
+    });
+
+    test('returns null when only pre-releases are newer', () async {
+      final target = await pickTargetVersion(
+        level: BumpLevel.major,
+        current: '9.30.1',
+        resolvable: '10.0.0-rc.2',
+        packageName: 'sentry_flutter',
+        fetchVersions: _fixed(['9.30.1', '10.0.0-rc.1', '10.0.0-rc.2']),
+      );
+      expect(target, isNull);
+    });
+
+    test('returns the pre-release when allowPrereleases is set', () async {
+      final target = await pickTargetVersion(
+        level: BumpLevel.major,
+        current: '9.30.0',
+        resolvable: '10.0.0-rc.2',
+        packageName: 'sentry_flutter',
+        fetchVersions: _shouldNotBeCalled(),
+        allowPrereleases: true,
+      );
+      expect(target, '10.0.0-rc.2');
+    });
+
+    test('returns the pre-release when current is a pre-release', () async {
+      final target = await pickTargetVersion(
+        level: BumpLevel.major,
+        current: '6.2.0-beta.3',
+        resolvable: '6.2.0-beta.4',
+        packageName: 'flutter_inappwebview',
+        fetchVersions: _shouldNotBeCalled(),
+      );
+      expect(target, '6.2.0-beta.4');
+    });
+
+    test('never picks a version above resolvable', () async {
+      final target = await pickTargetVersion(
+        level: BumpLevel.minor,
+        current: '1.2.3',
+        resolvable: '1.4.0-rc.1',
+        packageName: 'foo',
+        fetchVersions: _fixed(['1.3.0', '1.4.0-rc.1', '1.4.0', '1.5.0']),
+      );
+      expect(target, '1.3.0');
+    });
+  });
+
+  group('prereleaseAllowed', () {
+    final stable = Version.parse('1.0.0');
+    final prerelease = Version.parse('2.0.0-rc.1');
+
+    test('always allows stable versions', () {
+      expect(
+        prereleaseAllowed(current: stable, version: Version.parse('2.0.0')),
+        isTrue,
+      );
+    });
+
+    test('rejects pre-releases for stable deps by default', () {
+      expect(prereleaseAllowed(current: stable, version: prerelease), isFalse);
+    });
+
+    test('allows pre-releases when opted in', () {
+      expect(
+        prereleaseAllowed(
+          current: stable,
+          version: prerelease,
+          allowPrereleases: true,
+        ),
+        isTrue,
+      );
+    });
+
+    test('allows pre-releases when current is a pre-release', () {
+      expect(
+        prereleaseAllowed(
+          current: Version.parse('1.0.0-beta.1'),
+          version: prerelease,
+        ),
+        isTrue,
+      );
     });
   });
 }

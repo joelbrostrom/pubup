@@ -64,6 +64,12 @@ pubup --bump minor
 # Only take patch updates
 pubup --bump patch
 
+# Allow stable dependencies to move to pre-releases (e.g. 2.0.0-rc.1)
+pubup --prereleases
+
+# Run pub with a specific Flutter or Dart SDK
+pubup --sdk /path/to/flutter
+
 # Specify a custom project root
 pubup --root /path/to/project
 ```
@@ -76,7 +82,7 @@ narrower window so you can refresh dependencies without taking breaking
 changes:
 
 | Flag | What gets bumped |
-|------|------------------|
+| ------ | ------------------ |
 | `--bump major` (default) | Latest resolvable, including new major versions. |
 | `--bump minor` | Highest version that keeps the leading segment unchanged (e.g. `1.2.3` → up to `1.x.y`, `0.1.2` → up to `0.x.y`). |
 | `--bump patch` | Highest version that keeps the leading two segments unchanged (e.g. `1.2.3` → up to `1.2.x`). |
@@ -90,15 +96,48 @@ entirely.
 If no in-bound version above the currently locked one exists, the dependency
 is reported under `Skipped` as `above --bump` in the summary.
 
+## Pre-releases
+
+`pub outdated` can report a pre-release as the resolvable version even when
+the dependency is on a stable release (e.g. `sentry_flutter` `9.30.0` with
+`10.0.0-rc.2` resolvable while `9.30.1` is the latest stable). pubup never
+moves a stable dependency to a pre-release by default. It picks the newest
+stable version between the locked and the resolvable version instead.
+
+If only a pre-release is newer, the dependency is reported under `Skipped` as
+`prerelease-only`. Pass `--prereleases` to accept pre-releases. Dependencies
+already on a pre-release (e.g. `6.2.0-beta.3`) keep moving along pre-releases
+without the flag.
+
+## Which SDK pubup uses
+
+pubup runs `flutter pub` or `dart pub` from the first SDK it finds:
+
+1. `--sdk <path>`, a Flutter or Dart SDK directory.
+2. The [FVM](https://fvm.app) pin in the project's `.fvmrc`, linked at
+   `.fvm/versions/<version>`. If the pinned version is not linked, pubup
+   warns and falls back to `PATH`.
+3. The legacy FVM link `.fvm/flutter_sdk`.
+4. `flutter` and `dart` on `PATH`.
+
+The SDK decides which versions are resolvable, so the header shows which one
+was used:
+
+```txt
+Workspace: my-app (flutter pub)
+SDK: Flutter 3.38.5, Dart 3.10.4 (FVM .fvm/versions/3.38.5)
+```
+
 ## How it works
 
 1. **Discovers workspace packages** from the root `pubspec.yaml` `workspace:`
    section. Falls back to the root package only if no workspace is defined.
-2. **Runs `dart pub outdated --json --show-all`** (or `flutter pub` for Flutter
+2. **Picks the SDK** (see [Which SDK pubup uses](#which-sdk-pubup-uses)).
+3. **Runs `dart pub outdated --json --show-all`** (or `flutter pub` for Flutter
    packages) for each package.
-3. **Compares declared constraints** in `pubspec.yaml` against the latest
+4. **Compares declared constraints** in `pubspec.yaml` against the latest
    resolvable version reported by pub.
-4. **Updates constraints** using one of two strategies:
+5. **Updates constraints** using one of two strategies:
    - **Workspace projects** (root declares `workspace:`): shared dependencies
      are updated **coordinated** across every member that declares them.
      pubup rewrites all affected `pubspec.yaml` files, then runs one root-level
@@ -121,30 +160,50 @@ The tool intentionally skips dependencies that:
 - Use `path:`, `git:`, or `sdk:` sources
 - Have `any` or non-standard version constraints
 - Are already at `^<resolvable>` (up to date)
+- Are stable and only have a newer pre-release (unless `--prereleases`)
 - Are transitive (not declared directly in your pubspec)
 - Entries under `dependency_overrides:` (never modified)
+
+## Held-back dependencies
+
+When pub.dev has a newer version than pub can resolve, another dependency or
+the SDK is blocking it. pubup cannot move these, so it lists them in a
+`Held back` section above the summary:
+
+```txt
+Held back (2)
+-------------
+  Another dependency or the SDK blocks the latest version of these.
+
+  equatable  direct  resolvable 2.1.0  latest 3.0.0
+  freezed    dev     resolvable 4.0.1  latest 4.0.2
+```
+
+Held-back dependencies do not affect the exit code.
 
 ## CLI flags
 
 | Flag | Description | Default |
-|------|-------------|---------|
+| ------ | ------------- | --------- |
 | `--dry-run` | Preview changes without modifying files | `false` |
 | `--[no-]dev` | Include `dev_dependencies` | `true` |
 | `--package <name>` | Filter to specific workspace package(s); repeatable | all |
 | `--root <path>` | Project root directory | `.` |
 | `--bump <level>` | Cap how far constraints move: `major`, `minor`, or `patch` | `major` |
+| `--prereleases` | Allow stable dependencies to move to pre-releases | `false` |
+| `--sdk <path>` | Flutter or Dart SDK to run pub with | FVM pin, then `PATH` |
 | `--version`, `-V` | Print the current version | — |
 
 ### Subcommands
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `update` | Reinstall pubup from pub.dev (`dart pub global activate pubup`) |
 
 ## Exit codes
 
 | Code | Meaning |
-|------|---------|
+| ------ | --------- |
 | `0` | All updates succeeded (or nothing to update) |
 | `1` | One or more updates failed |
 
@@ -152,7 +211,9 @@ The tool intentionally skips dependencies that:
 
 Single package:
 
-```
+```txt
+SDK: Flutter 3.38.5, Dart 3.10.4 (PATH: /Users/me/flutter)
+
 Package: . (flutter pub)
 
   go_router           direct  ^17.0.0  ->  ^17.1.0
@@ -168,8 +229,9 @@ Summary
 Workspace (rows show shared `from` constraints across members and how many
 members each coordinated update touches):
 
-```
+```txt
 Workspace: my-app (flutter pub)
+SDK: Flutter 3.38.5, Dart 3.10.4 (FVM .fvm/versions/3.38.5)
 
   build_runner        dev     ^2.4.13, ^2.4.15  ->  ^2.15.0    8 members
   freezed             dev     ^3.0.3, ^3.0.6    ->  ^3.2.5     6 members
@@ -186,6 +248,7 @@ Summary
 
 When updates fail, the resolver error is wrapped under a `Failures` section
 above the summary so the totals stay visible at the bottom of the output.
+`Held back` dependencies are listed above `Failures`.
 
 ## Contributing
 

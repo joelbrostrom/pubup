@@ -59,39 +59,55 @@ bool versionFitsBound({
   }
 }
 
+/// Returns `true` when [version] may be used as a target for a dependency
+/// currently resolved to [current].
+///
+/// Stable versions are always allowed. Pre-releases are allowed only when
+/// [allowPrereleases] is set or [current] is itself a pre-release.
+bool prereleaseAllowed({
+  required Version current,
+  required Version version,
+  bool allowPrereleases = false,
+}) =>
+    !version.isPreRelease || allowPrereleases || current.isPreRelease;
+
 /// Picks the target version pubup should bump to.
 ///
-/// Returns `null` to indicate the candidate should be skipped (no version
-/// within the bump bound exists above [current]).
+/// Returns `null` to indicate the candidate should be skipped: no version
+/// above [current] and at most [resolvable] fits the bump bound and the
+/// pre-release policy.
 ///
 /// Strategy:
 ///
-/// 1. If [level] is [BumpLevel.major], return [resolvable] (no filtering).
-/// 2. If [resolvable] already fits the bound, return it (no network call).
-/// 3. Otherwise call [fetchVersions], filter to non-prerelease versions
-///    above [current] that fit the bound, return the highest, or `null`.
+/// 1. If [resolvable] fits the bound and the pre-release policy, return it
+///    (no network call).
+/// 2. Otherwise call [fetchVersions] and return the highest version above
+///    [current] and at most [resolvable] that fits both, or `null`.
 ///
-/// Pre-releases on pub.dev are excluded unless [current] itself is a
-/// pre-release matching that channel.
+/// `pub outdated` can report a pre-release as resolvable even when the
+/// dependency is on a stable version (e.g. `9.30.0` -> `10.0.0-rc.2`).
+/// Pre-releases are only accepted when [allowPrereleases] is set or
+/// [current] is itself a pre-release.
 Future<String?> pickTargetVersion({
   required BumpLevel level,
   required String current,
   required String resolvable,
   required String packageName,
   required VersionsFetcher fetchVersions,
+  bool allowPrereleases = false,
 }) async {
   final currentV = Version.parse(current);
   final resolvableV = Version.parse(resolvable);
 
-  if (level == BumpLevel.major) {
-    return resolvable;
-  }
+  bool acceptable(Version v) =>
+      versionFitsBound(level: level, current: currentV, candidate: v) &&
+      prereleaseAllowed(
+        current: currentV,
+        version: v,
+        allowPrereleases: allowPrereleases,
+      );
 
-  if (versionFitsBound(
-    level: level,
-    current: currentV,
-    candidate: resolvableV,
-  )) {
+  if (acceptable(resolvableV)) {
     return resolvable;
   }
 
@@ -111,11 +127,8 @@ Future<String?> pickTargetVersion({
       continue;
     }
 
-    if (v.isPreRelease && !currentV.isPreRelease) continue;
-    if (v <= currentV) continue;
-    if (!versionFitsBound(level: level, current: currentV, candidate: v)) {
-      continue;
-    }
+    if (v <= currentV || v > resolvableV) continue;
+    if (!acceptable(v)) continue;
 
     if (best == null || v > best) best = v;
   }

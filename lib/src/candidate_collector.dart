@@ -1,3 +1,4 @@
+import 'package:pub_semver/pub_semver.dart';
 import 'package:pubup/src/outdated_runner.dart';
 import 'package:pubup/src/pubspec_parser.dart';
 import 'package:pubup/src/version_resolver.dart';
@@ -36,6 +37,30 @@ class CandidateUpdate {
   String get targetConstraint => '^$targetVersion';
 }
 
+/// A declared dependency whose latest published version cannot be resolved
+/// because another dependency or the SDK constrains it.
+class HeldBackDependency {
+  /// Creates a [HeldBackDependency].
+  const HeldBackDependency({
+    required this.name,
+    required this.kind,
+    required this.resolvableVersion,
+    required this.latestVersion,
+  });
+
+  /// The package name.
+  final String name;
+
+  /// `"direct"` or `"dev"`.
+  final String kind;
+
+  /// The newest version pub can resolve today.
+  final String resolvableVersion;
+
+  /// The newest version published on pub.dev.
+  final String latestVersion;
+}
+
 /// Counters tracking how dependencies were classified during collection.
 class CollectionReport {
   /// Number of candidates that will be attempted.
@@ -59,6 +84,10 @@ class CollectionReport {
   /// Number of dependencies skipped because the latest in-bound version is
   /// not above the current version (filtered by `--bump`).
   int skippedByBumpFilter = 0;
+
+  /// Number of stable dependencies skipped because only a pre-release is
+  /// newer (see `--prereleases`).
+  int skippedPrerelease = 0;
 }
 
 /// Result of collecting update candidates for a single package.
@@ -67,6 +96,7 @@ class CollectionResult {
   CollectionResult({
     required this.candidates,
     required this.report,
+    this.heldBack = const [],
   });
 
   /// Dependencies that should be updated.
@@ -74,6 +104,9 @@ class CollectionResult {
 
   /// Classification counters.
   final CollectionReport report;
+
+  /// Declared hosted dependencies whose latest version is not resolvable.
+  final List<HeldBackDependency> heldBack;
 }
 
 /// Standard caret-version constraint pattern: `^1.2.3`, `1.2.3`,
@@ -86,21 +119,26 @@ final _standardConstraint =
 ///
 /// Set [includeDev] to `false` to skip `dev_dependencies`.
 ///
-/// [bumpLevel] caps how far constraints may move. With anything other than
-/// [BumpLevel.major], pubup may consult [fetchVersions] to find the highest
-/// in-bound version above the currently resolved version. When
-/// [fetchVersions] is `null`, only the resolvable version reported by `pub
-/// outdated` is considered; candidates whose resolvable version exceeds the
-/// bound are skipped.
+/// [bumpLevel] caps how far constraints may move, and stable dependencies only
+/// move to pre-releases when [allowPrereleases] is set. When the resolvable
+/// version reported by `pub outdated` breaks either rule, pubup consults
+/// [fetchVersions] for the highest qualifying version between the current
+/// and the resolvable version. When [fetchVersions] is `null`, such
+/// candidates are skipped.
+///
+/// Hosted dependencies whose latest version is newer than the resolvable one
+/// are returned in [CollectionResult.heldBack].
 Future<CollectionResult> collectCandidates({
   required List<OutdatedPackage> outdatedPackages,
   required PubspecDependencies deps,
   required bool includeDev,
   BumpLevel bumpLevel = BumpLevel.major,
   VersionsFetcher? fetchVersions,
+  bool allowPrereleases = false,
 }) async {
   final report = CollectionReport();
   final candidates = <CandidateUpdate>[];
+  final heldBack = <HeldBackDependency>[];
   final fetcher = fetchVersions ?? ((_) async => const <String>[]);
 
   for (final row in outdatedPackages) {
@@ -129,6 +167,9 @@ Future<CollectionResult> collectCandidates({
       continue;
     }
 
+    final held = _heldBack(row, allowPrereleases: allowPrereleases);
+    if (held != null) heldBack.add(held);
+
     final declared = (entry.constraint ?? '').trim();
     if (declared.isEmpty || declared == 'any') {
       report.skippedNonstandard++;
@@ -146,10 +187,20 @@ Future<CollectionResult> collectCandidates({
       resolvable: row.resolvableVersion,
       packageName: row.package,
       fetchVersions: fetcher,
+      allowPrereleases: allowPrereleases,
     );
 
     if (targetVersion == null) {
-      report.skippedByBumpFilter++;
+      final exceedsBump = !versionFitsBound(
+        level: bumpLevel,
+        current: Version.parse(row.currentVersion),
+        candidate: Version.parse(row.resolvableVersion),
+      );
+      if (exceedsBump) {
+        report.skippedByBumpFilter++;
+      } else {
+        report.skippedPrerelease++;
+      }
       continue;
     }
 
@@ -169,5 +220,44 @@ Future<CollectionResult> collectCandidates({
     ));
   }
 
-  return CollectionResult(candidates: candidates, report: report);
+  return CollectionResult(
+    candidates: candidates,
+    report: report,
+    heldBack: heldBack,
+  );
+}
+
+HeldBackDependency? _heldBack(
+  OutdatedPackage row, {
+  required bool allowPrereleases,
+}) {
+  final latest = row.latestVersion;
+  if (latest == null) return null;
+
+  final Version currentV;
+  final Version resolvableV;
+  final Version latestV;
+  try {
+    currentV = Version.parse(row.currentVersion);
+    resolvableV = Version.parse(row.resolvableVersion);
+    latestV = Version.parse(latest);
+  } on FormatException {
+    return null;
+  }
+
+  if (latestV <= resolvableV) return null;
+  if (!prereleaseAllowed(
+    current: currentV,
+    version: latestV,
+    allowPrereleases: allowPrereleases,
+  )) {
+    return null;
+  }
+
+  return HeldBackDependency(
+    name: row.package,
+    kind: row.kind,
+    resolvableVersion: row.resolvableVersion,
+    latestVersion: latest,
+  );
 }

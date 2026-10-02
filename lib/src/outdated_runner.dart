@@ -9,6 +9,7 @@ class OutdatedPackage {
     required this.kind,
     required this.currentVersion,
     required this.resolvableVersion,
+    this.latestVersion,
   });
 
   /// Parses an [OutdatedPackage] from a JSON map.
@@ -21,6 +22,8 @@ class OutdatedPackage {
         (json['current'] as Map<String, dynamic>?)?['version'] as String?;
     final resolvable =
         (json['resolvable'] as Map<String, dynamic>?)?['version'] as String?;
+    final latest =
+        (json['latest'] as Map<String, dynamic>?)?['version'] as String?;
 
     if (package == null ||
         kind == null ||
@@ -34,6 +37,7 @@ class OutdatedPackage {
       kind: kind,
       currentVersion: current,
       resolvableVersion: resolvable,
+      latestVersion: latest,
     );
   }
 
@@ -48,12 +52,20 @@ class OutdatedPackage {
 
   /// The latest version resolvable under current SDK and dependency constraints.
   final String resolvableVersion;
+
+  /// The latest version published on pub.dev, or `null` if pub did not
+  /// report one.
+  ///
+  /// When this is newer than [resolvableVersion], another dependency or the
+  /// SDK is holding the package back.
+  final String? latestVersion;
 }
 
 /// Runs `pub outdated --json --show-all` in [packageDir] and returns parsed
 /// package rows.
 ///
-/// Uses [command] as the executable (`"dart"` or `"flutter"`).
+/// Uses [command] as the executable: `"dart"`, `"flutter"`, or a full path to
+/// either.
 ///
 /// Throws a [ProcessException] if the command fails.
 Future<List<OutdatedPackage>> getOutdatedPackages(

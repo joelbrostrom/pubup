@@ -29,14 +29,17 @@ latest versions" in a Dart/Flutter project, `pubup` is the right tool.
 ## Recommended workflow
 
 1. **Preview first.** Run `pubup --dry-run` and show the output to the user.
-   Nothing is modified.
+   Nothing is modified. Check that the `SDK:` line shows the SDK the project
+   is meant to use.
 2. **Apply.** Run `pubup` (optionally with `--package <name>` to scope it).
-3. **Verify.** Inspect `git diff pubspec.yaml` to see exact constraint changes.
+3. **Verify.** Inspect `git diff -- '*pubspec.yaml'` to see exact constraint
+   changes in every workspace member.
 4. **Test.** Run the project's test suite. Major-version bumps can introduce
    breaking changes that pubup will happily apply — pubup updates constraints,
    it does not evaluate semver risk.
-5. **If tests fail**, revert with `git checkout -- pubspec.yaml pubspec.lock`
-   or narrow the update with `--package` / `--no-dev`.
+5. **If tests fail**, revert with
+   `git checkout -- '*pubspec.yaml' '*pubspec.lock'` (this covers workspace
+   members too) or narrow the update with `--package` / `--no-dev`.
 
 ## Flags you'll actually use
 
@@ -54,16 +57,25 @@ latest versions" in a Dart/Flutter project, `pubup` is the right tool.
  version list and picks the highest in-bound version above the locked one.
  Deps with no qualifying version are surfaced under `Skipped` as
  `above --bump`.
+- `--prereleases` — allow stable dependencies to move to pre-releases. Off by
+ default; only use it when the user asks for pre-releases.
+- `--sdk <path>` — run pub with a specific Flutter or Dart SDK. Only needed
+ when neither the FVM pin nor `PATH` points at the SDK the project uses.
 - `--root <path>` — when not invoking from the project root.
 
 ## Reading the output
 
+- The header line `SDK: Flutter 3.38.5, Dart 3.10.4 (...)` shows which SDK
+  pub ran with and where it came from. The SDK decides which versions are
+  resolvable.
 - Exit code `0` = success (including "nothing to update").
-- Exit code `1` = at least one update failed. Failures are listed under
-  `Package:` (single-package) or `Workspace:` (coordinated) output; the
-  trailing `Totals:` line shows the aggregate.
-- `git diff pubspec.yaml` is the most reliable signal of what changed. Prefer
-  it over scraping stdout.
+- Exit code `1` = at least one update or member scan failed. Each failure is
+  listed in the `Failures` section above the `Summary`.
+- The `Held back` section lists dependencies whose latest version another
+  dependency or the SDK blocks. pubup cannot move them; report them to the
+  user. They do not affect the exit code.
+- `git diff -- '*pubspec.yaml'` is the most reliable signal of what changed.
+  Prefer it over scraping stdout.
 
 ## What pubup will not touch
 
@@ -73,10 +85,24 @@ Skipped automatically (safe to assume these stay as-is):
 - Constraints that aren't a standard caret range (e.g. `any`, exact pins,
   complex ranges)
 - Dependencies already at `^<resolvable>`
+- Stable dependencies whose only newer version is a pre-release, unless
+  `--prereleases` is passed. When `pub outdated` reports a pre-release as
+  resolvable, pubup picks the newest stable version below it instead.
 - Transitive dependencies (only direct `dependencies` / `dev_dependencies`)
 - `dependency_overrides:` (workspace and single-package mode)
 
 If the user needs one of these updated, do it manually with `dart pub add`.
+
+## Which SDK pubup runs
+
+pubup runs `pub` with the first SDK it finds: `--sdk <path>`, then the FVM pin
+in `.fvmrc` (`.fvm/versions/<version>`), then the legacy `.fvm/flutter_sdk`
+link, then `flutter`/`dart` on `PATH`. FVM projects therefore do not need
+`fvm exec pubup`.
+
+If stderr warns that `.fvmrc` pins a version that is not linked, run
+`fvm use <version>` and re-run pubup. Otherwise pub resolves against the
+`PATH` SDK, which may be older or newer than the project's.
 
 ## Dart pub workspaces
 

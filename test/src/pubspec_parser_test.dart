@@ -140,6 +140,31 @@ dependencies:
       final result = parseDependencyEntriesFromString(yaml);
       expect(result.direct['provider']!.constraint, '^6.1.5+1');
     });
+
+    test('treats a block with only a version as hosted', () {
+      const yaml = '''
+dependencies:
+  http:
+    version: ^1.2.0
+''';
+      final result = parseDependencyEntriesFromString(yaml);
+      expect(result.direct['http']!.source, 'hosted');
+      expect(result.direct['http']!.constraint, '^1.2.0');
+    });
+
+    test('marks unrecognised entry shapes as unknown', () {
+      const yaml = '''
+dependencies:
+  list_form:
+    - ^1.0.0
+  block_without_source:
+    branch: main
+''';
+      final result = parseDependencyEntriesFromString(yaml);
+      expect(result.direct['list_form']!.source, 'unknown');
+      expect(result.direct['list_form']!.constraint, isNull);
+      expect(result.direct['block_without_source']!.source, 'unknown');
+    });
   });
 
   group('isFlutterPackageFromString', () {

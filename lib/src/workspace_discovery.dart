@@ -11,10 +11,7 @@ import 'package:yaml/yaml.dart';
 List<Directory> discoverWorkspaceDirs(Directory repoRoot) {
   final rootPubspec = File('${repoRoot.path}/pubspec.yaml');
   if (!rootPubspec.existsSync()) {
-    throw FileSystemException(
-      'Missing root pubspec.yaml',
-      rootPubspec.path,
-    );
+    throw FileSystemException('Missing root pubspec.yaml', rootPubspec.path);
   }
 
   final content = rootPubspec.readAsStringSync();
@@ -63,6 +60,23 @@ List<Directory> filterTargets(
     return names.intersection(wanted).isNotEmpty;
   }).toList();
 }
+
+/// Returns the folder name of [dir] for display.
+///
+/// Ignores `.` segments and trailing separators, so the default `--root .`
+/// shows the project folder name instead of `.`.
+String directoryDisplayName(Directory dir) {
+  final segments = dir.absolute.uri
+      .normalizePath()
+      .pathSegments
+      .where((s) => s.isNotEmpty)
+      .toList();
+  return segments.isEmpty ? dir.path : segments.last;
+}
+
+/// Returns [member]'s path relative to [repoRoot], or `.` for the root.
+String workspaceRelativePath(Directory member, Directory repoRoot) =>
+    _relativePath(member.path, repoRoot.path);
 
 String _relativePath(String child, String parent) {
   final normalized =

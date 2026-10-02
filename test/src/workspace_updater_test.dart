@@ -1,9 +1,12 @@
 import 'dart:io';
 
 import 'package:pubup/src/outdated_runner.dart';
+import 'package:pubup/src/sdk_resolver.dart';
 import 'package:pubup/src/version_resolver.dart';
 import 'package:pubup/src/workspace_updater.dart';
 import 'package:test/test.dart';
+
+import '../helpers/fake_sdk.dart';
 
 Future<List<OutdatedPackage>> _fakeOutdatedFetcher(
   String command,
@@ -130,47 +133,49 @@ void main() {
       );
     });
 
-    test('big-batch happy path runs pub get once for all coordinated deps',
-        () async {
-      writeFile('pubspec.yaml', _rootPubspec());
-      writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
-      writeFile('packages/pkg_b/pubspec.yaml', _memberPubspec('pkg_b'));
+    test(
+      'big-batch happy path runs pub get once for all coordinated deps',
+      () async {
+        writeFile('pubspec.yaml', _rootPubspec());
+        writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+        writeFile('packages/pkg_b/pubspec.yaml', _memberPubspec('pkg_b'));
 
-      final report = await runUpdatesForWorkspace(
-        repoRoot: tempDir,
-        scanTargets: [
-          tempDir,
-          memberDir('packages/pkg_a'),
-          memberDir('packages/pkg_b'),
-        ],
-        allWorkspaceDirs: [
-          tempDir,
-          memberDir('packages/pkg_a'),
-          memberDir('packages/pkg_b'),
-        ],
-        includeDev: true,
-        dryRun: false,
-        output: StringBuffer(),
-        errorOutput: StringBuffer(),
-        pubGetRunner: fakePubGetRunner,
-        outdatedPackagesFetcher: _fakeOutdatedFetcher,
-      );
-
-      expect(pubGetCalls, 1);
-      expect(report.failed, 0);
-      expect(report.failures, isEmpty);
-      expect(report.changed, 3);
-      for (final path in [
-        'pubspec.yaml',
-        'packages/pkg_a/pubspec.yaml',
-        'packages/pkg_b/pubspec.yaml',
-      ]) {
-        expect(
-          File('${tempDir.path}/$path').readAsStringSync(),
-          contains('shared_dep: ^1.2.0'),
+        final report = await runUpdatesForWorkspace(
+          repoRoot: tempDir,
+          scanTargets: [
+            tempDir,
+            memberDir('packages/pkg_a'),
+            memberDir('packages/pkg_b'),
+          ],
+          allWorkspaceDirs: [
+            tempDir,
+            memberDir('packages/pkg_a'),
+            memberDir('packages/pkg_b'),
+          ],
+          includeDev: true,
+          dryRun: false,
+          output: StringBuffer(),
+          errorOutput: StringBuffer(),
+          pubGetRunner: fakePubGetRunner,
+          outdatedPackagesFetcher: _fakeOutdatedFetcher,
         );
-      }
-    });
+
+        expect(pubGetCalls, 1);
+        expect(report.failed, 0);
+        expect(report.failures, isEmpty);
+        expect(report.changed, 3);
+        for (final path in [
+          'pubspec.yaml',
+          'packages/pkg_a/pubspec.yaml',
+          'packages/pkg_b/pubspec.yaml',
+        ]) {
+          expect(
+            File('${tempDir.path}/$path').readAsStringSync(),
+            contains('shared_dep: ^1.2.0'),
+          );
+        }
+      },
+    );
 
     test('big-batch happy path updates two deps with one pub get', () async {
       writeFile('pubspec.yaml', _rootPubspecTwoDeps());
@@ -292,35 +297,38 @@ void main() {
       expect(root, contains('other_dep: ^2.0.0'));
     });
 
-    test('reverts all pubspecs when big batch and per-dep retry both fail',
-        () async {
-      writeFile('pubspec.yaml', _rootPubspec());
-      writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
-      pubGetResults = [1, 1];
+    test(
+      'reverts all pubspecs when big batch and per-dep retry both fail',
+      () async {
+        writeFile('pubspec.yaml', _rootPubspec());
+        writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+        pubGetResults = [1, 1];
 
-      final report = await runUpdatesForWorkspace(
-        repoRoot: tempDir,
-        scanTargets: [tempDir, memberDir('packages/pkg_a')],
-        allWorkspaceDirs: [tempDir, memberDir('packages/pkg_a')],
-        includeDev: true,
-        dryRun: false,
-        output: StringBuffer(),
-        errorOutput: StringBuffer(),
-        pubGetRunner: fakePubGetRunner,
-        outdatedPackagesFetcher: _fakeOutdatedFetcher,
-      );
+        final report = await runUpdatesForWorkspace(
+          repoRoot: tempDir,
+          scanTargets: [tempDir, memberDir('packages/pkg_a')],
+          allWorkspaceDirs: [tempDir, memberDir('packages/pkg_a')],
+          includeDev: true,
+          dryRun: false,
+          output: StringBuffer(),
+          errorOutput: StringBuffer(),
+          pubGetRunner: fakePubGetRunner,
+          outdatedPackagesFetcher: _fakeOutdatedFetcher,
+        );
 
-      expect(pubGetCalls, 2);
-      expect(report.failed, 1);
-      expect(
-        File('${tempDir.path}/pubspec.yaml').readAsStringSync(),
-        contains('shared_dep: ^1.0.0'),
-      );
-      expect(
-        File('${tempDir.path}/packages/pkg_a/pubspec.yaml').readAsStringSync(),
-        contains('shared_dep: ^1.0.0'),
-      );
-    });
+        expect(pubGetCalls, 2);
+        expect(report.failed, 1);
+        expect(
+          File('${tempDir.path}/pubspec.yaml').readAsStringSync(),
+          contains('shared_dep: ^1.0.0'),
+        );
+        expect(
+          File('${tempDir.path}/packages/pkg_a/pubspec.yaml')
+              .readAsStringSync(),
+          contains('shared_dep: ^1.0.0'),
+        );
+      },
+    );
 
     test('reports status during scan, pub get, and per-dep retry', () async {
       writeFile('pubspec.yaml', _rootPubspecTwoDeps());
@@ -354,14 +362,11 @@ void main() {
 
       final messages = statusEvents.whereType<String>().toList(growable: false);
 
-      expect(
-        messages.where((m) => m.startsWith('Scanning')).toList(),
-        [
-          'Scanning . (1/3)',
-          'Scanning packages/pkg_a (2/3)',
-          'Scanning packages/pkg_b (3/3)',
-        ],
-      );
+      expect(messages.where((m) => m.startsWith('Scanning')).toList(), [
+        'Scanning . (1/3)',
+        'Scanning packages/pkg_a (2/3)',
+        'Scanning packages/pkg_b (3/3)',
+      ]);
       expect(messages, contains(startsWith('Running ')));
       expect(messages.where((m) => m.startsWith('Retrying')).length, 2);
       // The reporter should be cleared (null) at least once before output is
@@ -415,8 +420,103 @@ void main() {
       }
     });
 
-    test('bumpLevel=minor records skipped when no in-bound version exists',
-        () async {
+    test(
+      'bumpLevel=minor records skipped when no in-bound version exists',
+      () async {
+        writeFile('pubspec.yaml', _rootPubspec());
+        writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+
+        final report = await runUpdatesForWorkspace(
+          repoRoot: tempDir,
+          scanTargets: [tempDir, memberDir('packages/pkg_a')],
+          allWorkspaceDirs: [tempDir, memberDir('packages/pkg_a')],
+          includeDev: true,
+          dryRun: false,
+          output: StringBuffer(),
+          errorOutput: StringBuffer(),
+          bumpLevel: BumpLevel.minor,
+          fetchVersions: (_) async => ['1.0.0', '2.0.0'],
+          pubGetRunner: fakePubGetRunner,
+          outdatedPackagesFetcher: _fakeMajorBumpOutdatedFetcher,
+        );
+
+        expect(report.skippedByBumpFilter, 2);
+        expect(report.attempted, 0);
+        expect(report.changed, 0);
+        expect(pubGetCalls, 0);
+        expect(
+          File('${tempDir.path}/pubspec.yaml').readAsStringSync(),
+          contains('shared_dep: ^1.0.0'),
+        );
+      },
+    );
+
+    test(
+      'skips coordinated dep when --package filter excludes a declarer',
+      () async {
+        writeFile('pubspec.yaml', _rootPubspec());
+        writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+        writeFile('packages/pkg_b/pubspec.yaml', _memberPubspec('pkg_b'));
+
+        final errors = StringBuffer();
+        final report = await runUpdatesForWorkspace(
+          repoRoot: tempDir,
+          scanTargets: [tempDir],
+          allWorkspaceDirs: [
+            tempDir,
+            memberDir('packages/pkg_a'),
+            memberDir('packages/pkg_b'),
+          ],
+          includeDev: true,
+          dryRun: false,
+          output: StringBuffer(),
+          errorOutput: errors,
+          pubGetRunner: fakePubGetRunner,
+          outdatedPackagesFetcher: _fakeOutdatedFetcher,
+        );
+
+        expect(report.skippedFilteredCoordination, 1);
+        expect(pubGetCalls, 0);
+        expect(errors.toString(), contains('outside --package filter'));
+        expect(
+          File('${tempDir.path}/pubspec.yaml').readAsStringSync(),
+          contains('shared_dep: ^1.0.0'),
+        );
+      },
+    );
+
+    test('runs pub outdated and pub get with the SDK executable', () async {
+      writeFile('pubspec.yaml', _rootPubspec());
+      writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+      const sdk = PubSdk.at('/sdks/flutter', origin: 'test');
+      final outdatedCommands = <String>[];
+      final pubGetCommands = <String>[];
+
+      await runUpdatesForWorkspace(
+        repoRoot: tempDir,
+        scanTargets: [tempDir, memberDir('packages/pkg_a')],
+        allWorkspaceDirs: [tempDir, memberDir('packages/pkg_a')],
+        includeDev: true,
+        dryRun: false,
+        output: StringBuffer(),
+        errorOutput: StringBuffer(),
+        sdk: sdk,
+        pubGetRunner: (command, dir) async {
+          pubGetCommands.add(command);
+          return ProcessResult(0, 0, '', '');
+        },
+        outdatedPackagesFetcher: (command, dir) {
+          outdatedCommands.add(command);
+          return _fakeOutdatedFetcher(command, dir);
+        },
+      );
+
+      expect(outdatedCommands, everyElement(sdk.executable('dart')));
+      expect(outdatedCommands, hasLength(2));
+      expect(pubGetCommands, [sdk.executable('dart')]);
+    });
+
+    test('moves stable deps to the newest stable, not a pre-release', () async {
       writeFile('pubspec.yaml', _rootPubspec());
       writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
 
@@ -428,53 +528,253 @@ void main() {
         dryRun: false,
         output: StringBuffer(),
         errorOutput: StringBuffer(),
-        bumpLevel: BumpLevel.minor,
-        fetchVersions: (_) async => ['1.0.0', '2.0.0'],
+        fetchVersions: (_) async => ['1.0.0', '1.2.0', '2.0.0-rc.1'],
         pubGetRunner: fakePubGetRunner,
-        outdatedPackagesFetcher: _fakeMajorBumpOutdatedFetcher,
+        outdatedPackagesFetcher: (command, dir) async => [
+          const OutdatedPackage(
+            package: 'shared_dep',
+            kind: 'direct',
+            currentVersion: '1.0.0',
+            resolvableVersion: '2.0.0-rc.1',
+          ),
+        ],
       );
 
-      expect(report.skippedByBumpFilter, 2);
-      expect(report.attempted, 0);
-      expect(report.changed, 0);
-      expect(pubGetCalls, 0);
-      expect(
-        File('${tempDir.path}/pubspec.yaml').readAsStringSync(),
-        contains('shared_dep: ^1.0.0'),
-      );
+      expect(report.changed, 2);
+      for (final path in ['pubspec.yaml', 'packages/pkg_a/pubspec.yaml']) {
+        expect(
+          File('${tempDir.path}/$path').readAsStringSync(),
+          contains('shared_dep: ^1.2.0'),
+        );
+      }
     });
 
-    test('skips coordinated dep when --package filter excludes a declarer',
-        () async {
+    test('collects held-back deps and prerelease-only skips', () async {
       writeFile('pubspec.yaml', _rootPubspec());
       writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
-      writeFile('packages/pkg_b/pubspec.yaml', _memberPubspec('pkg_b'));
 
-      final errors = StringBuffer();
       final report = await runUpdatesForWorkspace(
         repoRoot: tempDir,
-        scanTargets: [tempDir],
-        allWorkspaceDirs: [
+        scanTargets: [tempDir, memberDir('packages/pkg_a')],
+        allWorkspaceDirs: [tempDir, memberDir('packages/pkg_a')],
+        includeDev: true,
+        dryRun: true,
+        output: StringBuffer(),
+        errorOutput: StringBuffer(),
+        fetchVersions: (_) async => ['1.0.0', '2.0.0-rc.1'],
+        pubGetRunner: fakePubGetRunner,
+        outdatedPackagesFetcher: (command, dir) async => [
+          const OutdatedPackage(
+            package: 'shared_dep',
+            kind: 'direct',
+            currentVersion: '1.0.0',
+            resolvableVersion: '2.0.0-rc.1',
+            latestVersion: '1.0.0',
+          ),
+          const OutdatedPackage(
+            package: 'transitive_dep',
+            kind: 'transitive',
+            currentVersion: '1.0.0',
+            resolvableVersion: '1.0.0',
+            latestVersion: '2.0.0',
+          ),
+        ],
+      );
+
+      expect(report.skippedPrerelease, 2);
+      expect(report.attempted, 0);
+      expect(report.heldBack, isEmpty);
+    });
+
+    test('aggregates held-back deps from every scanned member', () async {
+      writeFile('pubspec.yaml', _rootPubspec());
+      writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+
+      final report = await runUpdatesForWorkspace(
+        repoRoot: tempDir,
+        scanTargets: [tempDir, memberDir('packages/pkg_a')],
+        allWorkspaceDirs: [tempDir, memberDir('packages/pkg_a')],
+        includeDev: true,
+        dryRun: true,
+        output: StringBuffer(),
+        errorOutput: StringBuffer(),
+        pubGetRunner: fakePubGetRunner,
+        outdatedPackagesFetcher: (command, dir) async => [
+          const OutdatedPackage(
+            package: 'shared_dep',
+            kind: 'direct',
+            currentVersion: '1.0.0',
+            resolvableVersion: '1.2.0',
+            latestVersion: '3.0.0',
+          ),
+        ],
+      );
+
+      expect(report.heldBack.map((h) => h.name), ['shared_dep', 'shared_dep']);
+      expect(report.heldBack.first.latestVersion, '3.0.0');
+      expect(report.attempted, 1);
+    });
+
+    test(
+      'records a failed member scan and keeps scanning the others',
+      () async {
+        writeFile('pubspec.yaml', _rootPubspec());
+        writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+        writeFile('packages/pkg_b/pubspec.yaml', _memberPubspec('pkg_b'));
+        final dirs = [
           tempDir,
           memberDir('packages/pkg_a'),
           memberDir('packages/pkg_b'),
-        ],
+        ];
+        final errorOutput = StringBuffer();
+        final statuses = <String?>[];
+
+        final report = await runUpdatesForWorkspace(
+          repoRoot: tempDir,
+          scanTargets: dirs,
+          allWorkspaceDirs: dirs,
+          includeDev: true,
+          dryRun: true,
+          output: StringBuffer(),
+          errorOutput: errorOutput,
+          pubGetRunner: fakePubGetRunner,
+          outdatedPackagesFetcher: (command, dir) async {
+            if (dir.path.endsWith('pkg_a')) {
+              throw ProcessException(command, const ['pub'], 'no lockfile', 1);
+            }
+            return _fakeOutdatedFetcher(command, dir);
+          },
+          onStatus: statuses.add,
+        );
+
+        expect(report.scanFailures, hasLength(1));
+        expect(report.scanFailures.single, startsWith('packages/pkg_a: '));
+        expect(report.scanFailures.single, contains('no lockfile'));
+        expect(
+          errorOutput.toString(),
+          contains('! Failed package scan (packages/pkg_a)'),
+        );
+        final failedScan = statuses.indexOf('Scanning packages/pkg_a (2/3)');
+        expect(statuses[failedScan + 1], isNull);
+        expect(statuses, contains('Scanning packages/pkg_b (3/3)'));
+        expect(report.attempted, 1);
+      },
+    );
+
+    test(
+      'restores every pubspec when another member declares a range',
+      () async {
+        writeFile('pubspec.yaml', _rootPubspec());
+        writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+        writeFile(
+          'packages/pkg_b/pubspec.yaml',
+          _memberPubspec('pkg_b').replaceFirst('^1.0.0', '">=1.0.0 <2.0.0"'),
+        );
+        final dirs = [
+          tempDir,
+          memberDir('packages/pkg_a'),
+          memberDir('packages/pkg_b'),
+        ];
+
+        final report = await runUpdatesForWorkspace(
+          repoRoot: tempDir,
+          scanTargets: dirs,
+          allWorkspaceDirs: dirs,
+          includeDev: true,
+          dryRun: false,
+          output: StringBuffer(),
+          errorOutput: StringBuffer(),
+          pubGetRunner: fakePubGetRunner,
+          outdatedPackagesFetcher: _fakeOutdatedFetcher,
+        );
+
+        expect(pubGetCalls, 0);
+        expect(report.failed, 1);
+        expect(
+          report.failures.single,
+          'shared_dep: could not rewrite constraint in one or more '
+          'pubspec.yaml files (non-standard constraint form).',
+        );
+        expect(
+          File('${tempDir.path}/pubspec.yaml').readAsStringSync(),
+          _rootPubspec(),
+        );
+        expect(
+          File('${tempDir.path}/packages/pkg_a/pubspec.yaml')
+              .readAsStringSync(),
+          _memberPubspec('pkg_a'),
+        );
+      },
+    );
+
+    test('reports pub get stdout when stderr is empty', () async {
+      writeFile('pubspec.yaml', _rootPubspec());
+      writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+
+      final report = await runUpdatesForWorkspace(
+        repoRoot: tempDir,
+        scanTargets: [tempDir, memberDir('packages/pkg_a')],
+        allWorkspaceDirs: [tempDir, memberDir('packages/pkg_a')],
         includeDev: true,
         dryRun: false,
         output: StringBuffer(),
-        errorOutput: errors,
-        pubGetRunner: fakePubGetRunner,
+        errorOutput: StringBuffer(),
+        pubGetRunner: (command, dir) async => ProcessResult(
+          0,
+          1,
+          'Because root_app depends on shared_dep ^1.2.0, '
+              'version solving failed.\n',
+          '',
+        ),
         outdatedPackagesFetcher: _fakeOutdatedFetcher,
       );
 
-      expect(report.skippedFilteredCoordination, 1);
-      expect(pubGetCalls, 0);
-      expect(errors.toString(), contains('outside --package filter'));
       expect(
-        File('${tempDir.path}/pubspec.yaml').readAsStringSync(),
-        contains('shared_dep: ^1.0.0'),
+        report.failures.single,
+        'shared_dep: Because root_app depends on shared_dep ^1.2.0, '
+        'version solving failed.',
       );
     });
+
+    test(
+      'runs pub outdated and pub get as real processes by default',
+      () async {
+        writeFile('pubspec.yaml', _rootPubspec());
+        writeFile('packages/pkg_a/pubspec.yaml', _memberPubspec('pkg_a'));
+        final sdk = FakeSdk.create(tempDir)
+          ..respond(
+            'outdated',
+            stdout: outdatedJson([
+              outdatedRow('shared_dep', current: '1.0.0', resolvable: '1.2.0'),
+            ]),
+          );
+
+        final report = await runUpdatesForWorkspace(
+          repoRoot: tempDir,
+          scanTargets: [tempDir, memberDir('packages/pkg_a')],
+          allWorkspaceDirs: [tempDir, memberDir('packages/pkg_a')],
+          includeDev: true,
+          dryRun: false,
+          output: StringBuffer(),
+          errorOutput: StringBuffer(),
+          sdk: sdk.pubSdk,
+        );
+
+        final root = tempDir.resolveSymbolicLinksSync();
+        expect(sdk.calls.map((c) => '${c.workingDirectory}: ${c.arguments}'), [
+          '$root: pub outdated --json --show-all',
+          '$root/packages/pkg_a: pub outdated --json --show-all',
+          '$root: pub get',
+        ]);
+        expect(report.changed, 2);
+        expect(
+          File('${tempDir.path}/packages/pkg_a/pubspec.yaml')
+              .readAsStringSync(),
+          contains('shared_dep: ^1.2.0'),
+        );
+      },
+      skip: fakeSdkSkip,
+    );
   });
 }
 

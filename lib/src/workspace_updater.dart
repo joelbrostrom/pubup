@@ -5,6 +5,7 @@ import 'package:pubup/src/constraint_rewriter.dart';
 import 'package:pubup/src/outdated_runner.dart';
 import 'package:pubup/src/pubspec_parser.dart';
 import 'package:pubup/src/reporter.dart';
+import 'package:pubup/src/sdk_resolver.dart';
 import 'package:pubup/src/status_line.dart';
 import 'package:pubup/src/version_resolver.dart';
 
@@ -28,6 +29,9 @@ class WorkspaceMemberCandidate {
 }
 
 /// Fetches outdated package rows for a workspace member.
+///
+/// `command` is the executable to run: `"dart"`, `"flutter"`, or a full path
+/// to either inside the selected SDK.
 typedef OutdatedPackagesFetcher = Future<List<OutdatedPackage>> Function(
   String command,
   Directory packageDir,
@@ -38,6 +42,8 @@ typedef OutdatedPackagesFetcher = Future<List<OutdatedPackage>> Function(
 /// Dependencies shared by multiple members are updated atomically. Workspace
 /// mode tries one big batch (all rewrites + a single root `pub get`) first,
 /// then falls back to per-dependency batches when resolution fails.
+///
+/// `pub` runs with the executables of [sdk].
 Future<WorkspaceReport> runUpdatesForWorkspace({
   required Directory repoRoot,
   required List<Directory> scanTargets,
@@ -47,6 +53,8 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
   required StringSink output,
   required StringSink errorOutput,
   BumpLevel bumpLevel = BumpLevel.major,
+  bool allowPrereleases = false,
+  PubSdk sdk = const PubSdk.fromPath(),
   VersionsFetcher? fetchVersions,
   PubGetRunner? pubGetRunner,
   OutdatedPackagesFetcher? outdatedPackagesFetcher,
@@ -74,7 +82,7 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
 
     List<OutdatedPackage> outdated;
     try {
-      outdated = await fetchOutdated(memberCommand, target);
+      outdated = await fetchOutdated(sdk.executable(memberCommand), target);
     } on Exception catch (e) {
       report.scanFailures.add('$rel: $e');
       reportStatus(null);
@@ -88,8 +96,11 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
       includeDev: includeDev,
       bumpLevel: bumpLevel,
       fetchVersions: fetchVersions,
+      allowPrereleases: allowPrereleases,
     );
 
+    report.heldBack.addAll(result.heldBack);
+    report.skippedPrerelease += result.report.skippedPrerelease;
     report.skippedUpToDate += result.report.skippedUpToDate;
     report.skippedKind += result.report.skippedKind;
     report.skippedNonHosted += result.report.skippedNonHosted;
@@ -196,10 +207,12 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
     return report;
   }
 
+  final executable = sdk.executable(command);
+
   reportStatus('Running $command pub get');
   final bigBatch = await _applyCoordinatedBatch(
     rows: eligibleRows,
-    command: command,
+    executable: executable,
     repoRoot: repoRoot,
     runPubGet: runPubGet,
   );
@@ -222,7 +235,7 @@ Future<WorkspaceReport> runUpdatesForWorkspace({
     );
     final single = await _applyCoordinatedBatch(
       rows: [row],
-      command: command,
+      executable: executable,
       repoRoot: repoRoot,
       runPubGet: runPubGet,
     );
@@ -269,7 +282,7 @@ class _BatchOutcome {
 
 Future<_BatchOutcome> _applyCoordinatedBatch({
   required List<_RowMeta> rows,
-  required String command,
+  required String executable,
   required Directory repoRoot,
   required PubGetRunner runPubGet,
 }) async {
@@ -317,7 +330,7 @@ Future<_BatchOutcome> _applyCoordinatedBatch({
     }
   }
 
-  final pubGetResult = await runPubGet(command, repoRoot);
+  final pubGetResult = await runPubGet(executable, repoRoot);
   if (pubGetResult.exitCode != 0) {
     _restoreSnapshots(snapshots);
     final failureOutput = (pubGetResult.stderr as String).trim().isNotEmpty
@@ -336,6 +349,9 @@ Future<_BatchOutcome> _applyCoordinatedBatch({
 }
 
 /// Runs `pub get` at the workspace root.
+///
+/// `command` is the executable to run: `"dart"`, `"flutter"`, or a full path
+/// to either inside the selected SDK.
 typedef PubGetRunner = Future<ProcessResult> Function(
   String command,
   Directory workingDirectory,

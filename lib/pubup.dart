@@ -12,7 +12,12 @@
 library;
 
 export 'src/candidate_collector.dart'
-    show CandidateUpdate, CollectionReport, CollectionResult, collectCandidates;
+    show
+        CandidateUpdate,
+        CollectionReport,
+        CollectionResult,
+        HeldBackDependency,
+        collectCandidates;
 export 'src/commands/self_update.dart' show runSelfUpdate;
 export 'src/constraint_rewriter.dart'
     show RewriteResult, rewriteConstraint, standardConstraintPattern;
@@ -27,6 +32,16 @@ export 'src/pubspec_parser.dart'
         parseDependencyEntries;
 export 'src/reporter.dart'
     show PackageReport, WorkspaceReport, printReport, printWorkspaceReport;
+export 'src/sdk_resolver.dart'
+    show
+        PubSdk,
+        SdkResolutionException,
+        SdkVersion,
+        VersionCommandRunner,
+        describeSdk,
+        parseDartVersionOutput,
+        parseFlutterVersionOutput,
+        resolvePubSdk;
 export 'src/status_line.dart'
     show StatusLine, StatusReporter, disableProgressEnv, noopStatusReporter;
 export 'src/update_checker.dart'
@@ -44,8 +59,10 @@ export 'src/version_resolver.dart'
         VersionsFetcher,
         bumpLevelFromString,
         pickTargetVersion,
+        prereleaseAllowed,
         versionFitsBound;
-export 'src/workspace_discovery.dart' show discoverWorkspaceDirs, filterTargets;
+export 'src/workspace_discovery.dart'
+    show directoryDisplayName, discoverWorkspaceDirs, filterTargets;
 export 'src/workspace_mode.dart'
     show isWorkspaceRoot, isWorkspaceRootFromString;
 export 'src/workspace_updater.dart'
