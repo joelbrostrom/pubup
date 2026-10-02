@@ -1,5 +1,10 @@
+import 'dart:io';
+
+import 'package:mocktail/mocktail.dart';
 import 'package:pubup/src/status_line.dart';
 import 'package:test/test.dart';
+
+class _MockStdout extends Mock implements Stdout {}
 
 void main() {
   group('isProgressDisabledByEnvironment', () {
@@ -37,10 +42,7 @@ void main() {
 
     test('returns false when no relevant env var is set', () {
       expect(isProgressDisabledByEnvironment(const {}), isFalse);
-      expect(
-        isProgressDisabledByEnvironment(const {'CI': 'false'}),
-        isFalse,
-      );
+      expect(isProgressDisabledByEnvironment(const {'CI': 'false'}), isFalse);
     });
   });
 
@@ -61,22 +63,24 @@ void main() {
       expect(buffer.toString(), isEmpty);
     });
 
-    test('renders spinner + message and reserves a blank padding row below',
-        () {
-      final buffer = StringBuffer();
-      final status = StatusLine(
-        out: buffer,
-        enabled: true,
-        frames: const ['*'],
-      );
+    test(
+      'renders spinner + message and reserves a blank padding row below',
+      () {
+        final buffer = StringBuffer();
+        final status = StatusLine(
+          out: buffer,
+          enabled: true,
+          frames: const ['*'],
+        );
 
-      status.update('Scanning packages/auth (3/56)');
+        status.update('Scanning packages/auth (3/56)');
 
-      expect(
-        buffer.toString(),
-        '\r\x1B[K* Scanning packages/auth (3/56)\n\x1B[K\x1B[1A',
-      );
-    });
+        expect(
+          buffer.toString(),
+          '\r\x1B[K* Scanning packages/auth (3/56)\n\x1B[K\x1B[1A',
+        );
+      },
+    );
 
     test('clear() erases both the spinner row and the padding row below', () {
       final buffer = StringBuffer();
@@ -170,6 +174,94 @@ void main() {
       expect('A Scanning'.allMatches(out).length, 2);
 
       status.clear();
+    });
+  });
+
+  group('StatusLine auto-detection', () {
+    late _MockStdout terminal;
+
+    setUp(() {
+      terminal = _MockStdout();
+      when(() => terminal.hasTerminal).thenReturn(true);
+      when(() => terminal.terminalColumns).thenReturn(80);
+    });
+
+    test('is disabled in CI even when writing to stderr', () {
+      expect(StatusLine(environment: const {'CI': 'true'}).isEnabled, isFalse);
+    });
+
+    test('is enabled on a terminal', () {
+      final status = StatusLine(out: terminal, environment: const {});
+
+      expect(status.isEnabled, isTrue);
+    });
+
+    test('is disabled when the output is redirected', () {
+      when(() => terminal.hasTerminal).thenReturn(false);
+
+      expect(
+        StatusLine(out: terminal, environment: const {}).isEnabled,
+        isFalse,
+      );
+      expect(
+        StatusLine(out: StringBuffer(), environment: const {}).isEnabled,
+        isFalse,
+      );
+    });
+
+    test('is disabled when the terminal cannot be queried', () {
+      when(() => terminal.hasTerminal)
+          .thenThrow(const StdoutException('bad file descriptor'));
+
+      expect(
+        StatusLine(out: terminal, environment: const {}).isEnabled,
+        isFalse,
+      );
+    });
+  });
+
+  group('StatusLine width', () {
+    late _MockStdout terminal;
+
+    setUp(() {
+      terminal = _MockStdout();
+      when(() => terminal.hasTerminal).thenReturn(true);
+    });
+
+    String render(String message) {
+      StatusLine(out: terminal, enabled: true, frames: const ['*'])
+        ..update(message)
+        ..clear();
+      return verify(() => terminal.write(captureAny())).captured.first
+          as String;
+    }
+
+    test('truncates messages that would wrap the terminal line', () {
+      when(() => terminal.terminalColumns).thenReturn(20);
+
+      expect(
+        render('Scanning packages/very_long_name (3/56)'),
+        '\r\x1B[K* Scanning package…\n\x1B[K\x1B[1A',
+      );
+    });
+
+    test('keeps messages that fit the terminal', () {
+      when(() => terminal.terminalColumns).thenReturn(80);
+
+      expect(
+        render('Scanning packages/auth (3/56)'),
+        '\r\x1B[K* Scanning packages/auth (3/56)\n\x1B[K\x1B[1A',
+      );
+    });
+
+    test('renders in full when the width cannot be read', () {
+      when(() => terminal.terminalColumns)
+          .thenThrow(const StdoutException('no terminal'));
+
+      expect(
+        render('Scanning packages/very_long_name (3/56)'),
+        '\r\x1B[K* Scanning packages/very_long_name (3/56)\n\x1B[K\x1B[1A',
+      );
     });
   });
 }

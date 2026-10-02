@@ -98,13 +98,13 @@ class StatusLine {
   }
 
   bool _hasTerminal() {
+    final out = _out;
+    if (out is! Stdout) return false;
     try {
-      if (identical(_out, stderr)) return stderr.hasTerminal;
-      if (identical(_out, stdout)) return stdout.hasTerminal;
+      return out.hasTerminal;
     } on StdoutException {
       return false;
     }
-    return false;
   }
 
   /// Updates the status line to display [message], or clears it if
@@ -162,11 +162,12 @@ class StatusLine {
   }
 
   int? _terminalColumns() {
+    final out = _out;
+    if (out is! Stdout) return null;
     try {
-      if (stdout.hasTerminal) return stdout.terminalColumns;
+      return out.hasTerminal ? out.terminalColumns : null;
     } on StdoutException {
       return null;
     }
-    return null;
   }
 }

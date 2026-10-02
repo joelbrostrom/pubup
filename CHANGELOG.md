@@ -28,6 +28,10 @@
   its revert command missed workspace member pubspecs.
 - Allow `pub_updater` 0.6.x (`>=0.5.0 <0.7.0`). The range keeps Dart 3.5+
   support, since `pub_updater` 0.6.0 requires Dart 3.12.
+- **Fix:** the progress line now reads the terminal width from stderr, where
+  it is drawn, instead of stdout. With stdout redirected
+  (`pubup > log.txt`), long status messages were never truncated and could
+  wrap into stray lines.
 
 ## 0.6.1
 
