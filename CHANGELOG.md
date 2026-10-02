@@ -32,6 +32,8 @@
   it is drawn, instead of stdout. With stdout redirected
   (`pubup > log.txt`), long status messages were never truncated and could
   wrap into stray lines.
+- Internal: the CLI moved from `bin/pubup.dart` to `lib/src/cli.dart` so it
+  can be tested, and tests now cover every line in `lib/`.
 
 ## 0.6.1
 
