@@ -29,38 +29,23 @@ void main() {
     });
 
     test('returns true when disable env is empty', () {
-      expect(
-        isUpdateCheckDisabled({disableUpdateCheckEnv: ''}),
-        isTrue,
-      );
+      expect(isUpdateCheckDisabled({disableUpdateCheckEnv: ''}), isTrue);
     });
 
     test('returns true when disable env is 1', () {
-      expect(
-        isUpdateCheckDisabled({disableUpdateCheckEnv: '1'}),
-        isTrue,
-      );
+      expect(isUpdateCheckDisabled({disableUpdateCheckEnv: '1'}), isTrue);
     });
 
     test('returns true for other truthy disable values', () {
-      expect(
-        isUpdateCheckDisabled({disableUpdateCheckEnv: 'yes'}),
-        isTrue,
-      );
+      expect(isUpdateCheckDisabled({disableUpdateCheckEnv: 'yes'}), isTrue);
     });
 
     test('returns false when disable env is 0', () {
-      expect(
-        isUpdateCheckDisabled({disableUpdateCheckEnv: '0'}),
-        isFalse,
-      );
+      expect(isUpdateCheckDisabled({disableUpdateCheckEnv: '0'}), isFalse);
     });
 
     test('returns false when disable env is false', () {
-      expect(
-        isUpdateCheckDisabled({disableUpdateCheckEnv: 'false'}),
-        isFalse,
-      );
+      expect(isUpdateCheckDisabled({disableUpdateCheckEnv: 'false'}), isFalse);
     });
 
     test('returns false when neither CI nor disable env is set', () {
@@ -68,17 +53,11 @@ void main() {
     });
 
     test('returns true when isInteractive is false', () {
-      expect(
-        isUpdateCheckDisabled({}, isInteractive: false),
-        isTrue,
-      );
+      expect(isUpdateCheckDisabled({}, isInteractive: false), isTrue);
     });
 
     test('returns false when isInteractive is true and env is empty', () {
-      expect(
-        isUpdateCheckDisabled({}, isInteractive: true),
-        isFalse,
-      );
+      expect(isUpdateCheckDisabled({}, isInteractive: true), isFalse);
     });
   });
 
@@ -117,6 +96,19 @@ void main() {
         cacheDir: cacheDir,
         environment: {disableUpdateCheckEnv: '1'},
         isInteractive: true,
+      );
+
+      verifyNever(() => pubUpdater.getLatestVersion(any()));
+      expect(errorOutput.toString(), isEmpty);
+    });
+
+    test('skips in CI without an explicit isInteractive', () async {
+      await checkForUpdate(
+        currentVersion: '0.2.0',
+        errorOutput: errorOutput,
+        pubUpdater: pubUpdater,
+        cacheDir: cacheDir,
+        environment: {'CI': 'true'},
       );
 
       verifyNever(() => pubUpdater.getLatestVersion(any()));
@@ -264,7 +256,11 @@ void main() {
         isInteractive: true,
       );
 
-      verify(() => pubUpdater.getLatestVersion(pubupPackageName)).called(1);
+      if (isUpdateCheckDisabled(Platform.environment, isInteractive: true)) {
+        verifyNever(() => pubUpdater.getLatestVersion(pubupPackageName));
+      } else {
+        verify(() => pubUpdater.getLatestVersion(pubupPackageName)).called(1);
+      }
     });
 
     test('uses resolveUpdateCacheDir when cacheDir is omitted', () async {
@@ -290,10 +286,8 @@ void main() {
 
     test('swallows TimeoutException', () async {
       when(() => pubUpdater.getLatestVersion(pubupPackageName)).thenAnswer(
-        (_) => Future<String>.delayed(
-          const Duration(seconds: 5),
-          () => '0.3.0',
-        ),
+        (_) =>
+            Future<String>.delayed(const Duration(seconds: 5), () => '0.3.0'),
       );
 
       await checkForUpdate(
