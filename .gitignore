@@ -17,3 +17,4 @@ build/
 
 # Coverage
 coverage/
+test/all_libraries_test.dart
