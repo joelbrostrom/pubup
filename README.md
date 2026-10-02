@@ -255,6 +255,10 @@ above the summary so the totals stay visible at the bottom of the output.
 Contributions are welcome! Please file issues and pull requests on
 [GitHub](https://github.com/joelbrostrom/pubup).
 
+CI checks formatting, runs `dart analyze --fatal-infos`, and requires the tests
+to cover every line in `lib/`. Run `tool/coverage.sh` to check coverage locally;
+it lists any line that is not covered.
+
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.

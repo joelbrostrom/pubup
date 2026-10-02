@@ -17,7 +17,7 @@ resolvable versions, across single packages and workspaces.
 ## When to reach for pubup
 
 | Goal | Use |
-|------|-----|
+| ------ | ----- |
 | Bump `pubspec.yaml` constraints to the newest resolvable versions | **`pubup`** |
 | Only update `pubspec.lock` within existing constraints | `dart pub upgrade` |
 | Inspect what is outdated without changing anything | `dart pub outdated` or `pubup --dry-run` |
